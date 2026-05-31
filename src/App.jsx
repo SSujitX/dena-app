@@ -10,7 +10,6 @@ import DeleteModal from './components/DeleteModal';
 import LiveClock from './components/LiveClock';
 import NotificationDebugPanel from './components/NotificationDebugPanel';
 import {
-  getLoans,
   saveLoans,
   addLoan,
   updateLoan,
@@ -25,6 +24,7 @@ import {
   saveAutoBackupConfig,
   getLastAutoBackupAt,
   saveLastAutoBackupAt,
+  recalculateActiveLoansToFixedSchedule,
 } from './utils/loanManager';
 import {
   requestNotificationAccess,
@@ -130,7 +130,7 @@ export default function App() {
     ? `${copyrightStartYear.toLocaleString('bn-BD', { useGrouping: false })}–${currentYear.toLocaleString('bn-BD', { useGrouping: false })}`
     : copyrightStartYear.toLocaleString('bn-BD', { useGrouping: false });
 
-  const [loans, setLoans] = useState(() => getLoans());
+  const [loans, setLoans] = useState(() => recalculateActiveLoansToFixedSchedule());
   const [dashboardFilters, setDashboardFilters] = useState(() => getDashboardFilters());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSettingsTestOpen, setIsSettingsTestOpen] = useState(false);
@@ -985,7 +985,7 @@ export default function App() {
       localStorage.setItem(LAST_MANUAL_BACKUP_AT_KEY, pendingRestoreLastManualBackupAt);
       setLastManualBackupAt(pendingRestoreLastManualBackupAt);
     }
-    setLoans(getLoans());
+    setLoans(recalculateActiveLoansToFixedSchedule());
     setActiveLoanDetailsId(null);
     setEditingLoanId(null);
     setActivePaymentModal({ show: false, loan: null, isSettle: false });
