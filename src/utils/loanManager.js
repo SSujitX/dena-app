@@ -147,6 +147,23 @@ const buildNextPaymentDate = (anchorDateValue, intervalDays) => {
   return nextDate.toISOString();
 };
 
+const paymentDateToIso = (paymentDate) => {
+  if (!paymentDate) {
+    return toStartOfDay(new Date()).toISOString();
+  }
+  if (typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(paymentDate)) {
+    const [year, month, day] = paymentDate.slice(0, 10).split('-').map(Number);
+    return new Date(year, month - 1, day).toISOString();
+  }
+  return toStartOfDay(paymentDate).toISOString();
+};
+
+const addIntervalDaysFromAnchor = (anchorDateValue, intervalDays) => {
+  const nextDate = toStartOfDay(anchorDateValue);
+  nextDate.setDate(nextDate.getDate() + intervalDays);
+  return nextDate.toISOString();
+};
+
 export const addLoan = (loanData) => {
   const loans = getLoans();
   const intervalDays = getProfitIntervalDays();
@@ -165,16 +182,17 @@ export const addLoan = (loanData) => {
   return getLoans();
 };
 
-export const collectPayment = (loanId, amount, isFullSettlement) => {
+export const collectPayment = (loanId, amount, isFullSettlement, paymentDate = null) => {
   const loans = getLoans();
   const intervalDays = getProfitIntervalDays();
   const loanIndex = loans.findIndex(l => l.id === loanId);
   
   if (loanIndex > -1) {
     const loan = loans[loanIndex];
+    const paymentDateIso = paymentDateToIso(paymentDate);
     
     loan.payments.push({
-      date: new Date().toISOString(),
+      date: paymentDateIso,
       amount,
       type: isFullSettlement ? 'SETTLEMENT' : 'INTEREST'
     });
@@ -182,8 +200,7 @@ export const collectPayment = (loanId, amount, isFullSettlement) => {
     if (isFullSettlement) {
       loan.status = 'DONE';
     } else {
-      // Step the next payment date forward by configured interval days
-      loan.nextPaymentDate = buildNextPaymentDate(loan.nextPaymentDate, intervalDays);
+      loan.nextPaymentDate = addIntervalDaysFromAnchor(paymentDateIso, intervalDays);
     }
     
     saveLoans(loans);
@@ -232,6 +249,18 @@ export const updateLoan = (loanId, loanData) => {
   }
 
   return getLoans();
+};
+
+export const getLastInterestPayment = (loan) => {
+  if (!Array.isArray(loan?.payments) || !loan.payments.length) return null;
+
+  for (let index = loan.payments.length - 1; index >= 0; index -= 1) {
+    const payment = loan.payments[index];
+    if (payment.type === 'SETTLEMENT') continue;
+    return payment;
+  }
+
+  return null;
 };
 
 export const calculateDaysLeft = (nextPaymentDateIso) => {
