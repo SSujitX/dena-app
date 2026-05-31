@@ -196,7 +196,6 @@ export default function App() {
   const isDeleteModalOpenRef = useRef(activeDeleteModal.show);
   const activeLoanDetailsIdRef = useRef(activeLoanDetailsId);
   const isAutoBackupRunningRef = useRef(false);
-  const updateDownloadAbortRef = useRef(false);
   const isCheckingUpdateRef = useRef(isCheckingUpdate);
   const isUpdateModalOpenRef = useRef(isUpdateModalOpen);
   const isNativeRestorePickerOpenRef = useRef(isNativeRestorePickerOpen);
@@ -636,7 +635,6 @@ export default function App() {
     }
 
     setIsUpdateDownloading(true);
-    updateDownloadAbortRef.current = false;
     setUpdateDownloadedApkUri('');
     setUpdateDownloadedFileName('');
     setUpdateDownloadProgress(0);
@@ -652,7 +650,6 @@ export default function App() {
         headers: downloadHeaders,
         fileName,
         onProgress: ({ loaded, total }) => {
-          if (updateDownloadAbortRef.current) return;
           if (total > 0) {
             const progress = Math.round((loaded / total) * 100);
             setUpdateDownloadProgress(progress);
