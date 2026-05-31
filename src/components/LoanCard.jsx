@@ -1,27 +1,48 @@
-import { calculateDaysLeft } from '../utils/loanManager';
+import { calculateDaysLeft, getLastInterestPayment } from '../utils/loanManager';
 
 export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDeleteClick, onOpenDetails }) {
   const daysLeft = calculateDaysLeft(loan.nextPaymentDate);
   const isOverdue = daysLeft < 0;
+  const isActive = loan.status === 'ACTIVE';
 
   const toBn = (num) => Number(num).toLocaleString('bn-BD');
-  
+
   const banglaDays = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
-  
+
   const formatBnDate = (isoString) => {
-      const d = new Date(isoString);
-      const datePart = d.toLocaleDateString('bn-BD');
-      const dayName = banglaDays[d.getDay()];
-      return `${datePart} (${dayName})`;
+    const d = new Date(isoString);
+    return `${d.toLocaleDateString('bn-BD')} (${banglaDays[d.getDay()]})`;
   };
 
-  const lastPayment = loan.payments && loan.payments.length > 0 
-      ? loan.payments[loan.payments.length - 1] 
-      : null;
+  const lastInterestPayment = getLastInterestPayment(loan);
+
+  const statusTileClass = !isActive
+    ? 'loan-info-tile-done'
+    : isOverdue
+      ? 'loan-info-tile-overdue'
+      : daysLeft === 0
+        ? 'loan-info-tile-today'
+        : 'loan-info-tile-upcoming';
+
+  const statusText = !isActive
+    ? 'হিসাব সম্পূর্ণ পরিশোধিত'
+    : isOverdue
+      ? (
+        <>
+          <span className="loan-info-em">{toBn(Math.abs(daysLeft))}</span> দিন হয়ে গেছে টাকা দেয়নি!
+        </>
+      )
+      : daysLeft === 0
+        ? 'আজকে টাকা দিবে'
+        : (
+          <>
+            টাকা দিবে আর <span className="loan-info-em">{toBn(daysLeft)}</span> দিন পর
+          </>
+        );
 
   return (
     <div
-      className={`glass-card loan-card-container clickable-loan-card ${loan.status === 'ACTIVE' ? 'active-loan-highlight' : 'done-loan-highlight'} ${isOverdue && loan.status === 'ACTIVE' ? 'overdue-alert' : ''}`}
+      className={`glass-card loan-card-container clickable-loan-card ${isActive ? 'active-loan-highlight' : 'done-loan-highlight'} ${isOverdue && isActive ? 'overdue-alert' : ''}`}
       role="button"
       tabIndex={0}
       onClick={() => onOpenDetails(loan)}
@@ -32,104 +53,96 @@ export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDelete
         }
       }}
     >
-      
-      {/* Left side info (Name and dates) */}
-      <div className="loan-card-info">
-         <h3 className="font-bold text-pure text-lg truncate-text mb-2">
-            {loan.name}
-         </h3>
-         
-         <div className="flex flex-col gap-2">
-             <p className="text-sm text-muted">
-                 নেওয়া হয়েছে: <span style={{opacity: 0.9}}>{formatBnDate(loan.startDate)}</span>
-             </p>
-             
-             {lastPayment && (
-                 <p className="text-xs text-secondary opacity-70">
-                    শেষ মুনাফা জমা: {formatBnDate(lastPayment.date)}
-                 </p>
-             )}
-             
-             {loan.status === 'ACTIVE' ? (
-                 <>
-                     <p className="text-sm text-primary mt-1 mb-2">
-                         পরবর্তী কিস্তি: <span className="font-bold" style={{ color: isOverdue ? 'var(--color-danger)' : 'var(--color-warning)' }}>
-                             {formatBnDate(loan.nextPaymentDate)}
-                         </span>
-                     </p>
-                     <p className="text-sm text-primary mb-4">
-                         {isOverdue ? (
-                            <>
-                               বাকি: <span className="font-bold" style={{ color: 'var(--color-danger)', textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' }}>
-                                  <span style={{ fontSize: '1.25rem', margin: '0 0.15rem' }}>{toBn(Math.abs(daysLeft))}</span> দিন হয়ে গেছে টাকা দেয়নি!
-                               </span>
-                            </>
-                        ) : (
-                           <>
-                              বাকি: <span className="font-bold" style={{ color: 'var(--color-success)', textShadow: '0 0 8px rgba(16, 185, 129, 0.6)' }}>
-                                 {daysLeft === 0 ? (
-                                    'আজকে টাকা দিবে'
-                                 ) : (
-                                    <>
-                                       টাকা দিবে আর <span style={{ fontSize: '1.25rem', margin: '0 0.15rem' }}>{toBn(daysLeft)}</span> দিন পর
-                                    </>
-                                 )}
-                              </span>
-                           </>
-                        )}
-                     </p>
-                 </>
-             ) : (
-                 <p className="text-sm text-muted mt-1">হিসাব সম্পূর্ণ পরিশোধিত</p>
-             )}
-         </div>
+      <div className="loan-card-main">
+        <div className="loan-card-header">
+          <h3 className="loan-card-name truncate-text">{loan.name}</h3>
+          <div className="loan-card-amounts">
+            <span className="loan-principal-amount">{toBn(loan.principal)} ৳</span>
+            {isActive && (
+              <span className="loan-interest-amount">+{toBn(loan.interestPerWeek)} ৳</span>
+            )}
+          </div>
+        </div>
+
+        <div className="loan-info-list">
+          <div className="loan-info-tile loan-info-tile-start">
+            <span className="loan-info-tile-label">নেওয়া হয়েছে</span>
+            <span className="loan-info-tile-value">{formatBnDate(loan.startDate)}</span>
+          </div>
+
+          {lastInterestPayment && (
+            <div className="loan-info-tile loan-info-tile-joma loan-info-tile-split">
+              <div className="loan-info-tile-main">
+                <span className="loan-info-tile-label">শেষ মুনাফা জমা</span>
+                <span className="loan-info-tile-value">{formatBnDate(lastInterestPayment.date)}</span>
+              </div>
+              <div className="loan-info-joma-amount-box">
+                <span className="loan-info-joma-amount">{toBn(lastInterestPayment.amount)} ৳</span>
+              </div>
+            </div>
+          )}
+
+          {isActive && (
+            <div className="loan-info-duo">
+              <div className={`loan-info-tile loan-info-tile-next ${isOverdue ? 'loan-info-tile-next-overdue' : ''}`}>
+                <span className="loan-info-tile-label">পরবর্তী কিস্তি</span>
+                <span className="loan-info-tile-value">{formatBnDate(loan.nextPaymentDate)}</span>
+              </div>
+
+              <div className={`loan-info-tile loan-info-tile-status ${statusTileClass}`}>
+                <span className="loan-info-tile-label">বাকি</span>
+                <span className="loan-info-tile-value">{statusText}</span>
+              </div>
+            </div>
+          )}
+
+          {!isActive && (
+            <div className="loan-info-tile loan-info-tile-done">
+              <span className="loan-info-tile-label">অবস্থা</span>
+              <span className="loan-info-tile-value">{statusText}</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Middle amounts */}
-      <div className="loan-card-stats">
-         <p className="font-bold text-base text-pure amount-text">{loan.principal.toLocaleString('bn-BD')} ৳</p>
-         {loan.status === 'ACTIVE' && (
-             <p className="text-sm interest-text" style={{ color: 'var(--color-warning)' }}>
-                 +{loan.interestPerWeek.toLocaleString('bn-BD')} ৳
-             </p>
-         )}
-      </div>
-
-      {/* Right side actions (Strictly Equal Widths Globally) */}
       <div className="loan-card-actions">
-        {loan.status === 'ACTIVE' ? (
-           <>
-               <button 
-                  className="btn btn-primary compact-btn" 
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onPaymentClick(loan);
-                  }}
-                >
-                  মুনাফা জমা
-               </button>
-               <button 
-                  className="btn btn-secondary compact-btn" 
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSettleClick(loan);
-                  }}
-                >
-                  পরিশোধ
-               </button>
-              <button 
-                className="btn btn-danger compact-btn delete-btn" 
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDeleteClick();
-                }}
-              >
-                মুছে ফেলুন
-              </button>
-           </>
+        {isActive ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-primary compact-btn"
+              onClick={(event) => {
+                event.stopPropagation();
+                onPaymentClick(loan);
+              }}
+            >
+              মুনাফা জমা
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary compact-btn"
+              onClick={(event) => {
+                event.stopPropagation();
+                onSettleClick(loan);
+              }}
+            >
+              পরিশোধ
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger compact-btn delete-btn"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDeleteClick();
+              }}
+            >
+              মুছে ফেলুন
+            </button>
+          </>
         ) : (
-          <button 
-            className="btn btn-danger compact-btn delete-btn" 
+          <button
+            type="button"
+            className="btn btn-danger compact-btn delete-btn"
             onClick={(event) => {
               event.stopPropagation();
               onDeleteClick();
