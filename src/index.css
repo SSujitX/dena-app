@@ -672,13 +672,49 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 
 .loan-card-container {
   --loan-sweep-color: rgba(251, 191, 36, 0.55);
-  padding: 1.2rem;
+  padding: 0.95rem 1rem;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
   border-width: 1px;
   border-style: solid;
+}
+
+.loan-card-main {
+  width: 100%;
+  min-width: 0;
+}
+
+.loan-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+
+@media (min-width: 641px) {
+  .loan-card-stats {
+    flex-direction: column;
+    align-items: flex-end;
+    width: auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    gap: 0.45rem;
+  }
+
+  .loan-stat-block {
+    align-items: flex-end;
+  }
+
+  .loan-stat-block + .loan-stat-block {
+    padding-left: 0;
+    border-left: none;
+    padding-top: 0.45rem;
+    border-top: 1px solid var(--border-subtle);
+  }
 }
 
 .loan-card-container::before {
@@ -764,21 +800,454 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .loan-card-info {
-  flex: 1.2;
+  flex: 1;
   min-width: 0;
 }
 
-.loan-card-stats {
+.loan-card-name {
+  margin: 0;
+  line-height: 1.25;
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: var(--text-pure);
+}
+
+.loan-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.loan-card-amounts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  flex-shrink: 0;
+}
+
+.loan-principal-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-pure);
+  white-space: nowrap;
+}
+
+.loan-interest-amount {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-warning);
+  white-space: nowrap;
+}
+
+.loan-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.loan-info-duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.loan-info-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+}
+
+.loan-info-tile-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.loan-info-tile-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.loan-info-tile-start {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.1), rgba(255, 255, 255, 0.02));
+}
+
+.loan-info-tile-joma {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(52, 211, 153, 0.04));
+}
+
+.loan-info-tile-split {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.loan-info-tile-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.loan-info-joma-amount-box {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(52, 211, 153, 0.14));
+  border: 1px solid rgba(52, 211, 153, 0.5);
+  box-shadow:
+    inset 0 0 10px rgba(16, 185, 129, 0.15),
+    0 0 12px rgba(16, 185, 129, 0.18);
+}
+
+.loan-info-joma-amount {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #4ade80;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.loan-info-tile-next {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(245, 158, 11, 0.04));
+}
+
+.loan-info-tile-next .loan-info-tile-value {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.loan-info-tile-next-overdue {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.04));
+}
+
+.loan-info-tile-next-overdue .loan-info-tile-value {
+  color: #fca5a5;
+}
+
+.loan-info-tile-status.loan-info-tile-upcoming {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.03));
+}
+
+.loan-info-tile-status.loan-info-tile-upcoming .loan-info-tile-value {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.loan-info-tile-status.loan-info-tile-overdue {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.04));
+}
+
+.loan-info-tile-status.loan-info-tile-overdue .loan-info-tile-value {
+  color: #fca5a5;
+  font-weight: 700;
+}
+
+.loan-info-tile-status.loan-info-tile-today {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(245, 158, 11, 0.04));
+}
+
+.loan-info-tile-status.loan-info-tile-today .loan-info-tile-value {
+  color: #fcd34d;
+  font-weight: 700;
+}
+
+.loan-info-tile-done {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.loan-info-tile-done .loan-info-tile-value {
+  color: var(--text-secondary);
+}
+
+.loan-info-em {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+/* legacy meta classes kept for other components if needed */
+.loan-meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.loan-meta-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 38%) 1fr;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.loan-meta-row-highlight {
+  padding: 0.55rem 0.7rem;
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+}
+
+.loan-meta-row-overdue {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.loan-meta-label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.loan-meta-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem 0.5rem;
+  min-width: 0;
   text-align: right;
-  flex: 0.8;
-  padding-right: 0.5rem;
+}
+
+.loan-meta-date {
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.loan-meta-date-warning {
+  color: var(--color-warning);
+}
+
+.loan-meta-date-danger {
+  color: var(--color-danger);
+}
+
+.loan-meta-date-muted {
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.loan-meta-day {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.loan-meta-amount {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-warning);
+  white-space: nowrap;
+}
+
+.last-joma-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  width: 100%;
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.16), rgba(52, 211, 153, 0.06));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  box-shadow:
+    inset 0 0 18px rgba(16, 185, 129, 0.08),
+    0 4px 16px rgba(16, 185, 129, 0.08);
+}
+
+.last-joma-head {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.last-joma-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #06281d;
+  background: var(--gradient-green);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+}
+
+.last-joma-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.last-joma-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.last-joma-amount {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #4ade80;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.last-joma-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.last-joma-date-text {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.last-joma-day {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.22rem 0.6rem;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.loan-status-chip {
+  margin-top: 0.15rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.45;
+  border: 1px solid transparent;
+  text-align: center;
+}
+
+.loan-status-chip strong {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0 0.15rem;
+}
+
+.loan-status-upcoming {
+  color: var(--color-success);
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.22);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.12);
+}
+
+.loan-status-today {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.loan-status-overdue {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.28);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);
+}
+
+.loan-status-done {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-subtle);
+}
+
+.loan-card-stats {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.loan-stat-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.08rem;
+}
+
+.loan-stat-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.loan-stat-value {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0;
+  color: var(--text-pure);
+}
+
+.loan-stat-interest {
+  color: var(--color-warning);
+  font-weight: 700;
+  margin: 0;
 }
 
 .loan-card-actions {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: center;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: stretch;
+  width: 100%;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .loan-card-actions .btn:active {
@@ -787,19 +1256,19 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     inset 0 10px 18px rgba(0, 0, 0, 0.24);
 }
 
-.action-btn-group {
-  display: flex;
-  gap: 0.5rem;
-}
-
 .compact-btn {
-  padding: 0.45rem 0.75rem; 
-  font-size: 0.85rem; 
-  border-radius: 6px;
+  padding: 0.5rem 0.55rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  flex: 1;
+  min-width: 0;
+  min-height: 2.35rem;
+  text-align: center;
 }
 
 .delete-btn {
-  width: 100%;
+  flex: 1;
 }
 
 .truncate-text {
@@ -818,52 +1287,107 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 /* For small mobile devices */
 @media (max-width: 640px) {
   .loan-card-container {
-    flex-direction: column;
-    align-items: stretch; /* Cards fill the vertical space */
-    padding: 1rem;
-  }
-  
-  .loan-card-stats {
-    text-align: left; /* Shift numbers left */
-    padding-right: 0;
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border-subtle);
-    display: flex;
-    justify-content: space-between; /* Put principal and interest side-by-side */
-    align-items: center;
-  }
-  
-  .loan-card-actions {
-    flex-direction: row; /* Buttons sit horizontally */
-    margin-top: 1rem;
-    width: 100%;
-    gap: 0.5rem;
-    justify-content: space-between;
+    padding: 0.85rem 0.9rem;
+    gap: 0.65rem;
   }
 
-  .loan-card-actions > * {
-    flex: 1; /* Forces mathematical equality across all 3 buttons! */
-    text-align: center;
-    white-space: nowrap; /* Preemptively prevents 'মুনাফা জমা' from splitting on two lines if it's tight */
+  .loan-card-name {
+    font-size: 1.08rem;
+  }
+
+  .loan-principal-amount {
+    font-size: 1rem;
+  }
+
+  .loan-info-list {
+    gap: 0.38rem;
+    margin-top: 0.5rem;
+  }
+
+  .loan-info-tile {
+    padding: 0.48rem 0.55rem;
+  }
+
+  .loan-info-tile-label {
+    font-size: 0.72rem;
+  }
+
+  .loan-info-tile-value {
+    font-size: 0.84rem;
+  }
+
+  .loan-info-em {
+    font-size: 0.95rem;
+  }
+
+  .loan-info-duo {
+    grid-template-columns: 1fr;
+    gap: 0.38rem;
+  }
+
+  .loan-info-joma-amount-box {
+    padding: 0.4rem 0.6rem;
+  }
+
+  .loan-info-joma-amount {
+    font-size: 0.95rem;
+  }
+
+  .loan-card-actions {
+    padding-top: 0.5rem;
+    gap: 0.4rem;
   }
 
   .compact-btn {
-     padding: 0.5rem 0.2rem; /* Reduced horizontal padding padding to ensure text doesn't overflow */
-     font-size: 0.8rem;
+    padding: 0.48rem 0.35rem;
+    font-size: 0.82rem;
+    min-height: 2.25rem;
   }
 
-  /* Wrap long date strings on mobile so flex doesn't crush buttons */
   .truncate-text {
     white-space: normal;
+    word-break: break-word;
   }
-  
-  .sm-mt-0 {
-    margin-top: 0;
+}
+
+@media (min-width: 400px) and (max-width: 640px) {
+  .loan-info-duo {
+    grid-template-columns: 1fr 1fr;
   }
-  
-  .sm-mb-0 {
-    margin-bottom: 0;
+}
+
+@media (max-width: 360px) {
+  .loan-card-header {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .loan-card-amounts {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .loan-meta-row {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+
+  .loan-meta-label {
+    font-size: 0.7rem;
+  }
+
+  .loan-meta-value {
+    padding-left: 0.1rem;
+  }
+
+  .loan-status-chip {
+    font-size: 0.74rem;
+  }
+
+  .compact-btn {
+    font-size: 0.78rem;
+    padding: 0.48rem 0.15rem;
   }
 }
 
