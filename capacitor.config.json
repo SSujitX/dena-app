@@ -3,6 +3,9 @@
   "appName": "Dena",
   "webDir": "dist",
   "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
     "LocalNotifications": {
       "smallIcon": "ic_stat_dena_mono",
       "iconColor": "#8B5CF6"
