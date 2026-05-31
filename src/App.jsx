@@ -373,8 +373,8 @@ export default function App() {
     setActivePaymentModal({ show: true, loan, isSettle: true });
   };
 
-  const handlePaymentConfirm = (loanId, amount, isFullSettlement) => {
-    const updatedLoans = collectPayment(loanId, amount, isFullSettlement);
+  const handlePaymentConfirm = (loanId, amount, isFullSettlement, paymentDate = null) => {
+    const updatedLoans = collectPayment(loanId, amount, isFullSettlement, paymentDate);
     setLoans(updatedLoans);
     setActivePaymentModal({ show: false, loan: null, isSettle: false });
   };
@@ -1128,8 +1128,10 @@ export default function App() {
 
       {activePaymentModal.show && (
         <PaymentModal 
+          key={`${activePaymentModal.loan.id}-${activePaymentModal.isSettle}`}
           loan={activePaymentModal.loan}
           isSettle={activePaymentModal.isSettle}
+          profitIntervalDays={getProfitIntervalDays()}
           onConfirm={handlePaymentConfirm}
           onCancel={() => setActivePaymentModal({ show: false, loan: null, isSettle: false })}
         />
