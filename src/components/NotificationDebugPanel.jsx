@@ -8,6 +8,7 @@ export default function NotificationDebugPanel({
   onSendTest,
   onSendRealPreview,
   onClearAll,
+  onRecalculateSchedule,
 }) {
   const [status, setStatus] = useState('প্রস্তুত');
   const [pendingRows, setPendingRows] = useState([]);
@@ -44,32 +45,69 @@ export default function NotificationDebugPanel({
     }
   };
 
+  const recalculateSchedule = async () => {
+    const updatedCount = await handleAction(
+      async () => onRecalculateSchedule?.(),
+      null,
+    );
+
+    if (updatedCount === null || updatedCount === undefined) return;
+
+    if (updatedCount > 0) {
+      setStatus(
+        `${updatedCount.toLocaleString('bn-BD')}টি চলতি হিসাবের পরবর্তী কিস্তির তারিখ আপডেট হয়েছে।`,
+      );
+      return;
+    }
+
+    setStatus('সব চলতি হিসাব ইতিমধ্যে সঠিক তারিখে আছে।');
+  };
+
   return (
     <div className="glass-card notification-debug-panel">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-base font-bold">টেস্ট অপশন</h3>
+        <h3 className="text-base font-bold">ডিবাগ</h3>
         <span className="text-xs text-muted">চলতি হিসাব: {loans.length}</span>
       </div>
 
-      <div className="notification-debug-actions">
-        <button className="btn btn-secondary btn-sm notification-debug-btn" onClick={() => handleAction(onRequestPermission, 'পারমিশন চেক সম্পন্ন')}>
-          পারমিশন চেক
-        </button>
-        <button className="btn btn-secondary btn-sm notification-debug-btn" onClick={() => handleAction(onResync, 'রিমাইন্ডার রিসিঙ্ক সম্পন্ন')}>
-          রিমাইন্ডার রিসিঙ্ক
-        </button>
-        <button className="btn btn-secondary btn-sm notification-debug-btn" onClick={sendTest}>
-          টেস্ট পাঠান (৩০ সেকেন্ড)
-        </button>
-        <button className="btn btn-secondary btn-sm notification-debug-btn" onClick={sendRealPreview}>
-          রিয়েল প্রিভিউ (১০/২০/৩০ সেকেন্ড)
-        </button>
-        <button className="btn btn-secondary btn-sm notification-debug-btn" onClick={loadPending}>
-          পেন্ডিং দেখুন
-        </button>
-        <button className="btn btn-danger btn-sm notification-debug-btn" onClick={() => handleAction(onClearAll, 'সব পেন্ডিং মুছে ফেলা হয়েছে')}>
-          পেন্ডিং ক্লিয়ার
-        </button>
+      <div className="mb-4">
+        <p className="text-xs text-muted mb-2">হিসাব টুলস</p>
+        <div className="notification-debug-actions">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm notification-debug-btn"
+            onClick={recalculateSchedule}
+          >
+            পরবর্তী কিস্তির তারিখ ঠিক করুন
+          </button>
+        </div>
+        <p className="text-xs text-muted mt-2">
+          নেওয়ার তারিখ ও সেটিংসের ব্যবধান অনুযায়ী সব ACTIVE হিসাবের তারিখ আপডেট করবে।
+        </p>
+      </div>
+
+      <div>
+        <p className="text-xs text-muted mb-2">নোটিফিকেশন</p>
+        <div className="notification-debug-actions">
+          <button type="button" className="btn btn-secondary btn-sm notification-debug-btn" onClick={() => handleAction(onRequestPermission, 'পারমিশন চেক সম্পন্ন')}>
+            পারমিশন চেক
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm notification-debug-btn" onClick={() => handleAction(onResync, 'রিমাইন্ডার রিসিঙ্ক সম্পন্ন')}>
+            রিমাইন্ডার রিসিঙ্ক
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm notification-debug-btn" onClick={sendTest}>
+            টেস্ট পাঠান (৩০ সেকেন্ড)
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm notification-debug-btn" onClick={sendRealPreview}>
+            রিয়েল প্রিভিউ (১০/২০/৩০ সেকেন্ড)
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm notification-debug-btn" onClick={loadPending}>
+            পেন্ডিং দেখুন
+          </button>
+          <button type="button" className="btn btn-danger btn-sm notification-debug-btn" onClick={() => handleAction(onClearAll, 'সব পেন্ডিং মুছে ফেলা হয়েছে')}>
+            পেন্ডিং ক্লিয়ার
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-muted mt-4">{status}</p>
