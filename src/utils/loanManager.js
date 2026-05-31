@@ -235,10 +235,13 @@ export const applyProfitIntervalToActiveLoans = (days) => {
 
   const updatedLoans = loans.map((loan) => {
     if (loan.status !== 'ACTIVE') return loan;
-    return {
-      ...loan,
-      nextPaymentDate: buildNextPaymentDate(loan.startDate, intervalDays),
-    };
+
+    const lastInterestPayment = getLastInterestPayment(loan);
+    const nextPaymentDate = lastInterestPayment
+      ? getNextFixedDueDateAfterPayment(loan.startDate, intervalDays, lastInterestPayment.date)
+      : buildNextPaymentDate(loan.startDate, intervalDays);
+
+    return { ...loan, nextPaymentDate };
   });
 
   saveLoans(updatedLoans);
