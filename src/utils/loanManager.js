@@ -166,6 +166,10 @@ const getNextFixedDueDateAfterPayment = (startDate, intervalDays, paymentDate) =
   return getFixedScheduleSlot(startDate, intervalDays, 2).toISOString();
 };
 
+const dueDatesMatch = (leftValue, rightValue) => {
+  return toStartOfDay(leftValue).getTime() === toStartOfDay(rightValue).getTime();
+};
+
 const paymentDateToIso = (paymentDate) => {
   if (!paymentDate) {
     return toStartOfDay(new Date()).toISOString();
@@ -277,6 +281,34 @@ export const getLastInterestPayment = (loan) => {
   }
 
   return null;
+};
+
+export const recalculateActiveLoansToFixedSchedule = () => {
+  const intervalDays = getProfitIntervalDays();
+  const loans = getLoans();
+  let changed = false;
+
+  const updatedLoans = loans.map((loan) => {
+    if (loan.status !== 'ACTIVE') return loan;
+
+    const lastInterestPayment = getLastInterestPayment(loan);
+    const nextPaymentDate = lastInterestPayment
+      ? getNextFixedDueDateAfterPayment(loan.startDate, intervalDays, lastInterestPayment.date)
+      : buildNextPaymentDate(loan.startDate, intervalDays);
+
+    if (dueDatesMatch(loan.nextPaymentDate, nextPaymentDate)) {
+      return loan;
+    }
+
+    changed = true;
+    return { ...loan, nextPaymentDate };
+  });
+
+  if (changed) {
+    saveLoans(updatedLoans);
+  }
+
+  return getLoans();
 };
 
 export const calculateDaysLeft = (nextPaymentDateIso) => {
