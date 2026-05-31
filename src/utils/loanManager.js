@@ -124,27 +124,46 @@ export const calculateInterestFromPreset = (principalAmount, preset = getProfitP
 };
 
 const toStartOfDay = (dateValue) => {
+  if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateValue)) {
+    const [year, month, day] = dateValue.slice(0, 10).split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
   const date = new Date(dateValue);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 };
 
-const getAnchorDateForLoan = (loan) => {
-  if (loan.payments?.length) {
-    return loan.payments[loan.payments.length - 1].date;
-  }
-  return loan.startDate;
+const getFixedScheduleSlot = (startDate, intervalDays, slotIndex) => {
+  const anchor = toStartOfDay(startDate);
+  const slot = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  slot.setDate(slot.getDate() + slotIndex * intervalDays);
+  return slot;
 };
 
-const buildNextPaymentDate = (anchorDateValue, intervalDays) => {
-  const nextDate = toStartOfDay(anchorDateValue);
-  nextDate.setDate(nextDate.getDate() + intervalDays);
-
+const buildNextPaymentDate = (startDate, intervalDays) => {
   const today = toStartOfDay(new Date());
-  while (nextDate < today) {
-    nextDate.setDate(nextDate.getDate() + intervalDays);
+
+  for (let slotIndex = 1; slotIndex < 10000; slotIndex += 1) {
+    const slot = getFixedScheduleSlot(startDate, intervalDays, slotIndex);
+    if (slot >= today) {
+      return slot.toISOString();
+    }
   }
 
-  return nextDate.toISOString();
+  return getFixedScheduleSlot(startDate, intervalDays, 1).toISOString();
+};
+
+const getNextFixedDueDateAfterPayment = (startDate, intervalDays, paymentDate) => {
+  const reference = toStartOfDay(paymentDate);
+
+  for (let slotIndex = 1; slotIndex < 10000; slotIndex += 1) {
+    const slot = getFixedScheduleSlot(startDate, intervalDays, slotIndex);
+    if (slot > reference) {
+      return slot.toISOString();
+    }
+  }
+
+  return getFixedScheduleSlot(startDate, intervalDays, 2).toISOString();
 };
 
 const paymentDateToIso = (paymentDate) => {
@@ -156,12 +175,6 @@ const paymentDateToIso = (paymentDate) => {
     return new Date(year, month - 1, day).toISOString();
   }
   return toStartOfDay(paymentDate).toISOString();
-};
-
-const addIntervalDaysFromAnchor = (anchorDateValue, intervalDays) => {
-  const nextDate = toStartOfDay(anchorDateValue);
-  nextDate.setDate(nextDate.getDate() + intervalDays);
-  return nextDate.toISOString();
 };
 
 export const addLoan = (loanData) => {
@@ -200,7 +213,11 @@ export const collectPayment = (loanId, amount, isFullSettlement, paymentDate = n
     if (isFullSettlement) {
       loan.status = 'DONE';
     } else {
-      loan.nextPaymentDate = addIntervalDaysFromAnchor(paymentDateIso, intervalDays);
+      loan.nextPaymentDate = getNextFixedDueDateAfterPayment(
+        loan.startDate,
+        intervalDays,
+        paymentDateIso,
+      );
     }
     
     saveLoans(loans);
@@ -214,10 +231,9 @@ export const applyProfitIntervalToActiveLoans = (days) => {
 
   const updatedLoans = loans.map((loan) => {
     if (loan.status !== 'ACTIVE') return loan;
-    const anchorDateValue = getAnchorDateForLoan(loan);
     return {
       ...loan,
-      nextPaymentDate: buildNextPaymentDate(anchorDateValue, intervalDays),
+      nextPaymentDate: buildNextPaymentDate(loan.startDate, intervalDays),
     };
   });
 

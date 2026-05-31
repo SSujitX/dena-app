@@ -97,7 +97,7 @@ export default function PaymentModal({ loan, isSettle, profitIntervalDays = 7, o
             />
             {!isSettle && (
               <span className="text-xs mt-2 text-muted" style={{ marginLeft: '0.25rem' }}>
-                জমা দেওয়ার তারিখ থেকে পরবর্তী মুনাফা {intervalLabel} দিন পরে হবে।
+                পরবর্তী মুনাফার তারিখ সবসময় নেওয়ার তারিখ থেকে {intervalLabel} দিন পর পর হিসাব হবে। দেরিতে জমা দিলেও সেই সাইকেল বদলাবে না।
               </span>
             )}
           </div>
