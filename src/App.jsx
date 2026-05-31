@@ -36,7 +36,7 @@ import {
   clearLoanNotifications,
   clearDebugNotifications,
 } from './services/notificationService';
-import { installDownloadedApk } from './services/apkInstaller';
+import { downloadApkUpdate, installApkUpdate } from './services/apkUpdate';
 
 const FIRST_RUN_SETTINGS_KEY = 'denaFirstRunSettingsShown';
 const DASHBOARD_FILTERS_KEY = 'denaDashboardFilters';
@@ -48,6 +48,14 @@ const GITHUB_REPO = 'SSujitX/dena-app';
 const REPO_URL = `https://github.com/${GITHUB_REPO}`;
 const RELEASE_LATEST_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 const GITHUB_APK_ACCEPT_HEADER = 'application/octet-stream';
+const GITHUB_API_HEADERS = {
+  Accept: 'application/vnd.github+json',
+  'User-Agent': 'Dena-Android-App',
+};
+const GITHUB_DOWNLOAD_HEADERS = {
+  Accept: GITHUB_APK_ACCEPT_HEADER,
+  'User-Agent': 'Dena-Android-App',
+};
 const MIN_APK_BYTES = 100000;
 const UPDATE_LAST_CHECK_KEY = 'denaLastUpdateCheckAt';
 const CURRENT_APP_VERSION_KEY = 'denaCurrentAppVersion';
@@ -188,7 +196,7 @@ export default function App() {
   const isDeleteModalOpenRef = useRef(activeDeleteModal.show);
   const activeLoanDetailsIdRef = useRef(activeLoanDetailsId);
   const isAutoBackupRunningRef = useRef(false);
-  const updateDownloadRequestRef = useRef(null);
+  const updateDownloadAbortRef = useRef(false);
   const isCheckingUpdateRef = useRef(isCheckingUpdate);
   const isUpdateModalOpenRef = useRef(isUpdateModalOpen);
   const isNativeRestorePickerOpenRef = useRef(isNativeRestorePickerOpen);
@@ -346,13 +354,6 @@ export default function App() {
       disposed = true;
       cleanup();
     };
-  }, []);
-
-  useEffect(() => () => {
-    if (updateDownloadRequestRef.current) {
-      updateDownloadRequestRef.current.abort();
-      updateDownloadRequestRef.current = null;
-    }
   }, []);
 
   const handleAddLoanSave = (loanData) => {
@@ -542,7 +543,7 @@ export default function App() {
 
   const fetchLatestRelease = useCallback(async () => {
     const response = await fetch(RELEASE_LATEST_API_URL, {
-      headers: { Accept: 'application/vnd.github+json' },
+      headers: GITHUB_API_HEADERS,
     });
     if (!response.ok) {
       throw new Error(`release-api-${response.status}`);
@@ -621,81 +622,6 @@ export default function App() {
     }
   }, [fetchLatestRelease, getCurrentVersion]);
 
-  const downloadApkBlob = useCallback((apkApiUrl, fallbackUrl) => new Promise((resolve, reject) => {
-    const url = apkApiUrl || fallbackUrl;
-    if (!url) {
-      reject(new Error('download-url-missing'));
-      return;
-    }
-
-    const xhr = new XMLHttpRequest();
-    updateDownloadRequestRef.current = xhr;
-    xhr.open('GET', url, true);
-    xhr.responseType = 'blob';
-    if (apkApiUrl) {
-      xhr.setRequestHeader('Accept', GITHUB_APK_ACCEPT_HEADER);
-    }
-    xhr.onprogress = (event) => {
-      if (!event.lengthComputable) return;
-      const progress = Math.round((event.loaded / event.total) * 100);
-      setUpdateDownloadProgress(progress);
-      setUpdateDownloadBytesText(
-        `${formatBytes(event.loaded)} / ${formatBytes(event.total)}`,
-      );
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        const blob = xhr.response;
-        if (!blob || blob.size < MIN_APK_BYTES) {
-          reject(new Error('download-empty-or-invalid'));
-          return;
-        }
-        resolve(blob);
-        return;
-      }
-      reject(new Error(`download-failed-${xhr.status}`));
-    };
-    xhr.onerror = () => reject(new Error('download-network-error'));
-    xhr.onabort = () => reject(new Error('download-aborted'));
-    xhr.send();
-  }), []);
-
-  const verifyDownloadedApk = useCallback(async (targetPath, expectedSize = 0) => {
-    const stat = await Filesystem.stat({
-      path: targetPath,
-      directory: Directory.Documents,
-    });
-    const fileSize = Number(stat?.size || 0);
-    if (fileSize < MIN_APK_BYTES) {
-      throw new Error('download-too-small');
-    }
-    if (expectedSize > MIN_APK_BYTES && fileSize < expectedSize * 0.95) {
-      throw new Error('download-incomplete');
-    }
-    return fileSize;
-  }, []);
-
-  const blobToBase64 = useCallback((blob) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = String(reader.result || '');
-      const base64Data = result.includes(',') ? result.split(',')[1] : result;
-      resolve(base64Data);
-    };
-    reader.onerror = () => reject(new Error('blob-read-failed'));
-    reader.readAsDataURL(blob);
-  }), []);
-
-  const writeApkBlobToDocuments = useCallback(async (blob, targetPath) => {
-    const base64Data = await blobToBase64(blob);
-    await Filesystem.writeFile({
-      path: targetPath,
-      data: base64Data,
-      directory: Directory.Documents,
-      recursive: true,
-    });
-  }, [blobToBase64]);
-
   const handleDownloadUpdate = async () => {
     if ((!updateInfo?.apkApiUrl && !updateInfo?.apkUrl) || isUpdateDownloading) return;
 
@@ -710,6 +636,7 @@ export default function App() {
     }
 
     setIsUpdateDownloading(true);
+    updateDownloadAbortRef.current = false;
     setUpdateDownloadedApkUri('');
     setUpdateDownloadedFileName('');
     setUpdateDownloadProgress(0);
@@ -717,103 +644,66 @@ export default function App() {
     setUpdateDownloadErrorText('');
     try {
       const fileName = updateInfo.apkName || `Dena-v${updateInfo.latestVersion}.apk`;
-      const targetPath = `Dena/updates/${fileName}`;
       const downloadUrl = updateInfo.apkApiUrl || updateInfo.apkUrl;
-      const downloadHeaders = updateInfo.apkApiUrl
-        ? { Accept: GITHUB_APK_ACCEPT_HEADER }
-        : undefined;
-      let downloaded = false;
+      const downloadHeaders = GITHUB_DOWNLOAD_HEADERS;
 
-      if (Capacitor.isNativePlatform() && typeof Filesystem.downloadFile === 'function') {
-        let progressListener = null;
-        try {
-          progressListener = await Filesystem.addListener('progress', (event) => {
-            const total = Number(event?.contentLength || 0);
-            const loaded = Number(event?.bytes || 0);
-            if (total > 0) {
-              const progress = Math.round((loaded / total) * 100);
-              setUpdateDownloadProgress(progress);
-              setUpdateDownloadBytesText(`${formatBytes(loaded)} / ${formatBytes(total)}`);
-            } else if (loaded > 0) {
-              setUpdateDownloadBytesText(`${formatBytes(loaded)} ডাউনলোড হয়েছে`);
-            }
-          });
-        } catch {
-          progressListener = null;
-        }
-
-        try {
-          await Filesystem.downloadFile({
-            url: downloadUrl,
-            path: targetPath,
-            directory: Directory.Documents,
-            recursive: true,
-            progress: true,
-            headers: downloadHeaders,
-          });
-          await verifyDownloadedApk(targetPath, updateInfo.apkSize);
-          downloaded = true;
-        } catch (nativeDownloadError) {
-          console.warn('Native APK download failed, trying blob fallback:', nativeDownloadError);
-          try {
-            await Filesystem.deleteFile({
-              path: targetPath,
-              directory: Directory.Documents,
-            });
-          } catch {
-            // ignore cleanup errors
+      const result = await downloadApkUpdate({
+        url: downloadUrl,
+        headers: downloadHeaders,
+        fileName,
+        onProgress: ({ loaded, total }) => {
+          if (updateDownloadAbortRef.current) return;
+          if (total > 0) {
+            const progress = Math.round((loaded / total) * 100);
+            setUpdateDownloadProgress(progress);
+            setUpdateDownloadBytesText(`${formatBytes(loaded)} / ${formatBytes(total)}`);
+            return;
           }
-        } finally {
-          if (progressListener) {
-            await progressListener.remove();
+          if (loaded > 0) {
+            const estimatedTotal = updateInfo.apkSize > MIN_APK_BYTES ? updateInfo.apkSize : loaded;
+            const progress = Math.min(99, Math.round((loaded / estimatedTotal) * 100));
+            setUpdateDownloadProgress(progress);
+            setUpdateDownloadBytesText(`${formatBytes(loaded)} ডাউনলোড হয়েছে`);
           }
-        }
-      }
-
-      if (!downloaded) {
-        const apkBlob = await downloadApkBlob(updateInfo.apkApiUrl, updateInfo.apkUrl);
-        await writeApkBlobToDocuments(apkBlob, targetPath);
-        await verifyDownloadedApk(targetPath, updateInfo.apkSize);
-      }
-
-      const fileUri = await Filesystem.getUri({
-        path: targetPath,
-        directory: Directory.Documents,
+        },
       });
+
+      const fileSize = Number(result?.size || 0);
+      if (fileSize < MIN_APK_BYTES) {
+        throw new Error('download-too-small');
+      }
+      if (updateInfo.apkSize > MIN_APK_BYTES && fileSize < updateInfo.apkSize * 0.95) {
+        throw new Error('download-incomplete');
+      }
+
       setUpdateDownloadProgress(100);
       setUpdateDownloadBytesText('ডাউনলোড সম্পন্ন');
-      setUpdateDownloadedApkUri(fileUri.uri);
+      setUpdateDownloadedApkUri(result.uri);
       setUpdateDownloadedFileName(fileName);
       setSettingsStatus('আপডেট ডাউনলোড সম্পন্ন। এখন ইনস্টল করুন।');
     } catch (error) {
       console.error('Update download failed:', error);
-      const isAborted = String(error?.message || '').includes('aborted');
-      const message = isAborted
-        ? 'ডাউনলোড বাতিল হয়েছে।'
-        : 'আপডেট ডাউনলোড করা যায়নি। ইন্টারনেট ঠিক আছে কিনা দেখে আবার চেষ্টা করুন।';
+      const message = 'আপডেট ডাউনলোড করা যায়নি। ইন্টারনেট ঠিক আছে কিনা দেখে আবার চেষ্টা করুন।';
       setSettingsStatus(message);
       setUpdateDownloadErrorText(message);
     } finally {
-      updateDownloadRequestRef.current = null;
       setIsUpdateDownloading(false);
     }
   };
 
-  const handleCancelUpdateDownload = () => {
-    const request = updateDownloadRequestRef.current;
-    if (!request) return;
-    request.abort();
-    updateDownloadRequestRef.current = null;
-    setIsUpdateDownloading(false);
-    setUpdateDownloadErrorText('ডাউনলোড বাতিল হয়েছে।');
+  const handleOpenReleasePage = () => {
+    if (updateInfo?.releaseUrl) {
+      window.open(updateInfo.releaseUrl, '_blank');
+    }
   };
 
   const handleInstallUpdate = async () => {
     if (!updateDownloadedApkUri) return;
     try {
       if (Capacitor.getPlatform() === 'android') {
-        const installed = await installDownloadedApk(updateDownloadedApkUri);
-        if (installed) return;
+        await installApkUpdate(updateDownloadedApkUri);
+        setSettingsStatus('ইনস্টল স্ক্রিন খোলা হয়েছে। সেখান থেকে আপডেট সম্পন্ন করুন।');
+        return;
       }
 
       await Share.share({
@@ -825,10 +715,8 @@ export default function App() {
       });
     } catch (error) {
       console.error('Update install handoff failed:', error);
-      setSettingsStatus('ইনস্টল খুলতে পারেনি। Settings থেকে GitHub রিলিজ লিংক দিয়ে ম্যানুয়াল ইনস্টল করুন।');
-      if (updateInfo?.releaseUrl) {
-        window.open(updateInfo.releaseUrl, '_blank');
-      }
+      setSettingsStatus('ইনস্টল স্ক্রিন খুলতে পারেনি। GitHub থেকে ম্যানুয়াল ডাউনলোড করুন।');
+      setUpdateDownloadErrorText('ইনস্টল স্ক্রিন খুলতে পারেনি।');
     }
   };
 
@@ -1586,15 +1474,15 @@ export default function App() {
                 </button>
               )}
 
-              {isUpdateDownloading ? (
+              {updateDownloadErrorText && !updateDownloadedApkUri && updateInfo.releaseUrl && (
                 <button
                   type="button"
                   className="btn btn-secondary settings-action-btn"
-                  onClick={handleCancelUpdateDownload}
+                  onClick={handleOpenReleasePage}
                 >
-                  ডাউনলোড বাতিল
+                  GitHub থেকে ডাউনলোড
                 </button>
-              ) : null}
+              )}
 
               <button
                 type="button"
