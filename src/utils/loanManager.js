@@ -286,7 +286,7 @@ export const getLastInterestPayment = (loan) => {
 export const recalculateActiveLoansToFixedSchedule = () => {
   const intervalDays = getProfitIntervalDays();
   const loans = getLoans();
-  let changed = false;
+  let updatedCount = 0;
 
   const updatedLoans = loans.map((loan) => {
     if (loan.status !== 'ACTIVE') return loan;
@@ -300,15 +300,15 @@ export const recalculateActiveLoansToFixedSchedule = () => {
       return loan;
     }
 
-    changed = true;
+    updatedCount += 1;
     return { ...loan, nextPaymentDate };
   });
 
-  if (changed) {
+  if (updatedCount > 0) {
     saveLoans(updatedLoans);
   }
 
-  return getLoans();
+  return { loans: getLoans(), updatedCount };
 };
 
 export const calculateDaysLeft = (nextPaymentDateIso) => {
