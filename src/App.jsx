@@ -130,7 +130,7 @@ export default function App() {
     ? `${copyrightStartYear.toLocaleString('bn-BD', { useGrouping: false })}–${currentYear.toLocaleString('bn-BD', { useGrouping: false })}`
     : copyrightStartYear.toLocaleString('bn-BD', { useGrouping: false });
 
-  const [loans, setLoans] = useState(() => recalculateActiveLoansToFixedSchedule());
+  const [loans, setLoans] = useState(() => recalculateActiveLoansToFixedSchedule().loans);
   const [dashboardFilters, setDashboardFilters] = useState(() => getDashboardFilters());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSettingsTestOpen, setIsSettingsTestOpen] = useState(false);
@@ -430,6 +430,12 @@ export default function App() {
   const handleDebugClearAll = async () => {
     await clearLoanNotifications();
     await clearDebugNotifications();
+  };
+
+  const handleDebugRecalculateSchedule = () => {
+    const { loans: updatedLoans, updatedCount } = recalculateActiveLoansToFixedSchedule();
+    setLoans(updatedLoans);
+    return updatedCount;
   };
 
   const formatBackupFileName = (includeTime = false) => {
@@ -985,7 +991,7 @@ export default function App() {
       localStorage.setItem(LAST_MANUAL_BACKUP_AT_KEY, pendingRestoreLastManualBackupAt);
       setLastManualBackupAt(pendingRestoreLastManualBackupAt);
     }
-    setLoans(recalculateActiveLoansToFixedSchedule());
+    setLoans(recalculateActiveLoansToFixedSchedule().loans);
     setActiveLoanDetailsId(null);
     setEditingLoanId(null);
     setActivePaymentModal({ show: false, loan: null, isSettle: false });
@@ -1468,18 +1474,18 @@ export default function App() {
 
               <div className="settings-card-block">
                 <div className="text-center mb-2">
-                  <h3 className="section-title settings-block-title">টেস্ট অপশন</h3>
+                  <h3 className="section-title settings-block-title">ডিবাগ</h3>
                 </div>
                 <div className="settings-interval-card settings-tools-card">
                 <p className="text-xs text-muted settings-card-help">
-                  নোটিফিকেশন টেস্ট ও ডিবাগ অপশন চালু/বন্ধ করুন।
+                  হিসাব ঠিক করা, নোটিফিকেশন টেস্ট ও অন্যান্য ডিবাগ টুলস।
                 </p>
                 <button
                   type="button"
                   className="btn btn-secondary settings-action-btn settings-test-toggle-btn"
                   onClick={() => setIsSettingsTestOpen((prev) => !prev)}
                 >
-                  {isSettingsTestOpen ? 'টেস্ট অপশন বন্ধ করুন' : 'টেস্ট অপশন খুলুন'}
+                  {isSettingsTestOpen ? 'ডিবাগ বন্ধ করুন' : 'ডিবাগ খুলুন'}
                 </button>
               </div>
               </div>
@@ -1507,6 +1513,7 @@ export default function App() {
                   onSendTest={handleDebugTest}
                   onSendRealPreview={handleDebugRealPreview}
                   onClearAll={handleDebugClearAll}
+                  onRecalculateSchedule={handleDebugRecalculateSchedule}
                 />
               </div>
             )}
