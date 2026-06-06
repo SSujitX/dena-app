@@ -122,12 +122,24 @@ const normalizeDashboardFilters = (value) => {
 };
 
 const getDashboardFilters = () => {
+  const currentDate = new Date();
+  const filters = {
+    activeTab: 'ACTIVE',
+    selectedYear: currentDate.getFullYear(),
+    selectedMonth: currentDate.getMonth(),
+  };
+
   const raw = localStorage.getItem(DASHBOARD_FILTERS_KEY);
-  if (!raw) return normalizeDashboardFilters({});
+  if (!raw) return filters;
+
   try {
-    return normalizeDashboardFilters(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    return {
+      ...filters,
+      activeTab: parsed?.activeTab === 'DONE' ? 'DONE' : 'ACTIVE',
+    };
   } catch {
-    return normalizeDashboardFilters({});
+    return filters;
   }
 };
 
@@ -399,7 +411,7 @@ export default function App() {
   const handleDashboardFiltersChange = useCallback((nextFilters) => {
     const normalized = normalizeDashboardFilters(nextFilters);
     setDashboardFilters(normalized);
-    localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify(normalized));
+    localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify({ activeTab: normalized.activeTab }));
   }, []);
 
   const activeLoanDetails = loans.find((loan) => loan.id === activeLoanDetailsId) || null;
@@ -857,9 +869,14 @@ export default function App() {
       setAutoBackupIntervalDraft(String(appliedAutoBackupConfig.intervalDays));
     }
     if (pendingRestoreDashboardFilters) {
-      const normalizedFilters = normalizeDashboardFilters(pendingRestoreDashboardFilters);
+      const currentDate = new Date();
+      const normalizedFilters = {
+        activeTab: pendingRestoreDashboardFilters?.activeTab === 'DONE' ? 'DONE' : 'ACTIVE',
+        selectedYear: currentDate.getFullYear(),
+        selectedMonth: currentDate.getMonth(),
+      };
       setDashboardFilters(normalizedFilters);
-      localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify(normalizedFilters));
+      localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify({ activeTab: normalizedFilters.activeTab }));
     }
     if (pendingRestoreFirstRunSettingsShown !== null && pendingRestoreFirstRunSettingsShown !== undefined) {
       if (pendingRestoreFirstRunSettingsShown) {
