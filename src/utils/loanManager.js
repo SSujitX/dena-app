@@ -141,15 +141,7 @@ const getFixedScheduleSlot = (startDate, intervalDays, slotIndex) => {
 };
 
 const buildNextPaymentDate = (startDate, intervalDays) => {
-  const today = toStartOfDay(new Date());
-
-  for (let slotIndex = 1; slotIndex < 10000; slotIndex += 1) {
-    const slot = getFixedScheduleSlot(startDate, intervalDays, slotIndex);
-    if (slot >= today) {
-      return slot.toISOString();
-    }
-  }
-
+  // First munafa due is always start + one interval (slot 1), even if that date is already past.
   return getFixedScheduleSlot(startDate, intervalDays, 1).toISOString();
 };
 
@@ -258,15 +250,26 @@ export const deleteLoan = (loanId) => {
 export const updateLoan = (loanId, loanData) => {
   const loans = getLoans();
   const loanIndex = loans.findIndex((loan) => loan.id === loanId);
+  const intervalDays = getProfitIntervalDays();
 
   if (loanIndex > -1) {
+    const existing = loans[loanIndex];
+    const startDate = loanData.startDate;
+    const lastInterestPayment = getLastInterestPayment(existing);
+    const nextPaymentDate = existing.status === 'ACTIVE'
+      ? (lastInterestPayment
+        ? getNextFixedDueDateAfterPayment(startDate, intervalDays, lastInterestPayment.date)
+        : buildNextPaymentDate(startDate, intervalDays))
+      : existing.nextPaymentDate;
+
     loans[loanIndex] = {
-      ...loans[loanIndex],
+      ...existing,
       name: loanData.name,
-      startDate: loanData.startDate,
+      startDate,
       principal: Number(loanData.principal),
       interestPerWeek: Number(loanData.interestPerWeek),
       proofImage: loanData.proofImage || null,
+      nextPaymentDate,
     };
     saveLoans(loans);
   }
@@ -315,13 +318,9 @@ export const recalculateActiveLoansToFixedSchedule = () => {
 };
 
 export const calculateDaysLeft = (nextPaymentDateIso) => {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  
-  const paymentDate = new Date(nextPaymentDateIso);
-  const nextPayment = new Date(paymentDate.getFullYear(), paymentDate.getMonth(), paymentDate.getDate());
-  
-  const diffTime = nextPayment - today;
+  const today = toStartOfDay(new Date());
+  const nextPayment = toStartOfDay(nextPaymentDateIso);
+  const diffTime = nextPayment.getTime() - today.getTime();
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
