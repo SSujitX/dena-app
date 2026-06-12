@@ -296,6 +296,7 @@ Workflow: `.github/workflows/build-android.yml` (`Android Signed Release Build`)
 - Builds web bundle, syncs Capacitor, validates signing files, builds `assembleRelease`
 - APK filename format: `Dena-v<versionName>.apk`
 - Artifact name format: `Dena-Android-v<versionName>-<versionCode>`
+- New GitHub releases use the matching `## v<versionName>` section from `CHANGELOG.md` as release notes
 
 ## Known Limits and Remaining Quirks
 
