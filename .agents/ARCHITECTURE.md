@@ -17,10 +17,13 @@ No server, API, or database is currently part of the architecture.
 
 - Browser loads `index.html`, then `src/main.jsx`.
 - `main.jsx` mounts `<App />` in React StrictMode.
-- `App.jsx` initializes `loans` from `getLoans()` in state initializer.
-- `getLoans()` reads and parses `localStorage.getItem("denaLoans")`.
-
-Important: `getLoans()` assumes valid JSON and has no parse fallback, so malformed storage can throw.
+- `App.jsx` initializes `loans` from `recalculateActiveLoansToFixedSchedule().loans`:
+  - reads `getLoans()` (with try/catch — corrupt JSON returns `[]`)
+  - normalizes each loan (`interestPerInstallment`, drops legacy `interestPerWeek` on save)
+  - backfills missing `payment.coveredDate` on interest payments
+  - reconciles `nextPaymentDate` on ACTIVE loans to fixed-grid formula
+- `dashboardFilters` loaded from `denaDashboardFilters` (tab + month + year).
+- `calendarDay` state refreshes every 60s and on app resume so overdue/missed counts update after midnight without a payment action.
 
 ## 3) State Ownership and Component Boundaries
 
@@ -33,7 +36,7 @@ Important: `getLoans()` assumes valid JSON and has no parse fallback, so malform
 - `updateInfo` / `isUpdateModalOpen`: in-app updater state from GitHub releases
 - `isNativeRestorePickerOpen`: native restore file-picker modal (`Documents/Dena`)
 - `isAddingLoan`: controls add modal visibility
-- `activePaymentModal`: `{ show, loan, isSettle }`
+- `activePaymentModal`: `{ show, loanId, isSettle }` — modal resolves live loan via `loans.find(id)`
 - `activeDeleteModal`: `{ show, loan }`
 - `activeLoanDetailsId`: selected loan for full details modal
 
@@ -41,7 +44,8 @@ Important: `getLoans()` assumes valid JSON and has no parse fallback, so malform
 
 - active tab (`ACTIVE` or `DONE`)
 - selected month and year for summary
-- defaults to current month/year on app load (selection is not persisted across restart)
+- persisted in App state + `denaDashboardFilters` (full object on filter change)
+- defaults to current month/year only when no saved filters exist
 
 Pattern used:
 
@@ -51,62 +55,77 @@ Pattern used:
 
 ## 4) Domain Logic in `loanManager.js`
 
-### Storage key
+### Storage keys
 
-- Constant key used directly: `denaLoans`
-- Settings key: `denaProfitIntervalDays` (default `7`, bounded `1..365`)
-- Other persisted UI/config keys include:
-  - `denaLastUpdateCheckAt` (update check throttle timestamp)
-  - `denaCurrentAppVersion` (cached installed app version for update UI)
+- `denaLoans` — loan array
+- `denaProfitIntervalDays` — global kisti interval in days (default `7`, range `1..365`)
+- `denaProfitPreset`, `denaAutoBackupConfig`, `denaDashboardFilters`, etc. (see `AGENTS.md`)
 
-### ID generation
+### Timezone helpers
 
-- `generateId()` uses `Math.random().toString(36).substr(2, 9)`
-- Fast and simple, but not collision-proof.
+All schedule boundaries use **`Asia/Dhaka`**:
 
-### Loan create logic
+- `toBangladeshYmd(value)` → `YYYY-MM-DD`
+- `bangladeshYmdToDate(ymd)` → UTC+6 midnight anchor
+- `toStartOfDay(value)` → Dhaka start-of-day `Date`
+- `calculateDaysLeft(iso)` → signed day diff vs today in Dhaka
 
-- Input: `{ name, startDate, principal, interestPerWeek, proofImage? }`
-- Computes `nextPaymentDate` as start + configured profit interval days
-- Creates loan:
-  - `status: "ACTIVE"`
-  - `payments: []`
-- If provided, stores `proofImage` object with compressed image metadata.
-- Saves and returns fresh full list.
+Do **not** use device-local `new Date().getDate()` for due/missed logic.
 
-### Payment logic
+### Fixed kisti grid
 
-`collectPayment(loanId, amount, isFullSettlement)`:
+```text
+slotIndex n  →  due = startDate + n × intervalDays   (n >= 1)
+paidCycles   =  count of payments where type !== SETTLEMENT
+next unpaid  =  slot (paidCycles + 1)
+missed slots =  slots (paidCycles+1 .. today] on the grid
+```
 
-- Finds loan by `id`
-- Adds payment object with current ISO timestamp
-- If settlement:
-  - set `status = "DONE"`
-- Else:
-  - increment `nextPaymentDate` by configured profit interval days
-- Saves and returns list.
+Rules:
 
-### Profit interval setting logic
+- Late payment does **not** slide the grid.
+- Each `INTEREST` payment covers exactly **one** slot: oldest unpaid at time of joma.
+- `payment.date` = when money was received; `payment.coveredDate` = which slot was closed.
 
-- `getProfitIntervalDays()` reads `denaProfitIntervalDays` with fallback to `7`.
-- `saveProfitIntervalDays(days)` normalizes and persists value.
-- `applyProfitIntervalToActiveLoans(days)`:
-  - persists the new interval
-  - recalculates `nextPaymentDate` for all `ACTIVE` loans immediately
-  - uses last payment date (if present) or start date as recalculation anchor
+### `getLoanDueState(loan)` (primary UI API)
 
-### Delete logic
+Returns:
 
-- Filters out target `id`, saves, returns list.
+| Field | Meaning |
+|-------|---------|
+| `nextPaymentDate` | Oldest unpaid slot (same as first missed, or next future slot if none missed) |
+| `upcomingPaymentDate` | Next future slot on grid (used when missed list non-empty) |
+| `missedDueDates` | All unpaid slots with due ≤ today |
+| `missedCycles` | `missedDueDates.length` |
+| `paidCycles` | interest payment count |
 
-### Derived calculations
+UI should call this instead of reading `loan.nextPaymentDate` alone.
 
-- `calculateDaysLeft(nextPaymentDateIso)`: day-level difference from today
-- `getAvailableYears(loans)`: years from payment history + current year
-- `getSummaryStats(loans, selectedYear, selectedMonth)`:
-  - active principal total
-  - all-time interest total
-  - selected month interest total
+### Loan create
+
+- Input: `{ name, startDate, principal, interestPerInstallment, proofImage? }`
+- `nextPaymentDate` = slot 1
+- `status: ACTIVE`, `payments: []`
+
+### Payment — `collectPayment(loanId, amount, isFullSettlement, paymentDate?)`
+
+- Appends payment; for interest, sets `coveredDate` to slot `paidCycles + 1` **before** count increments
+- Updates `nextPaymentDate` via `computeNextPaymentDateForLoan`
+- Settlement → `status: DONE` (missed munafa may remain uncollected)
+
+### Migration — `recalculateActiveLoansToFixedSchedule()`
+
+Runs on app init and from debug panel. For each loan:
+
+1. `withCoveredDates` — backfill `coveredDate` if missing
+2. ACTIVE loans — fix `nextPaymentDate` if out of sync with grid
+
+### Other helpers
+
+- `getLoanInterestAmount(loan)` — `interestPerInstallment` with legacy `interestPerWeek` fallback
+- `normalizeLoan` on read/save — canonical schema
+- `getSummaryStats` — monthly bucket uses Dhaka month of payment date
+- `getInterestPaymentCoveredDate` — prefers stored `coveredDate`
 
 ## 5) UI Modules and Responsibilities
 
@@ -115,14 +134,13 @@ Pattern used:
   - Renders summary cards and month/year selectors
   - Tabbed list: active vs done
 - `LoanCard.jsx`
-  - Renders each loan
-  - Overdue highlighting and Bengali date/day text
-  - Actions:
-    - `ACTIVE`: interest payment + settlement + delete
-    - `DONE`: delete only
-  - Card tap opens full details modal
+  - Uses `getLoanDueState`, `getLastInterestPayment`, `getInterestPaymentCoveredDate`
+  - Sections: নেওয়া হয়েছে (gray), শেষ মুনাফা জমা + সম্পন্ন কিস্তি (green), বাকি কিস্তি (red), পরবর্তী কিস্তি (blue), বাকি status (orange/green)
+  - Status “দিন জমা হয়নি” counts from **last সম্পন্ন কিস্তি** date, not current due
+  - Actions: `ACTIVE` → munafa + settle + delete; `DONE` → delete only
 - `LoanDetailsModal.jsx`
-  - Shows full loan details and payment history
+  - Shows full loan details and payment history via `getLoanDueState` / `getInterestPaymentCoveredDate`
+  - Hides **পরবর্তী কিস্তি** when `status === DONE`
   - Shows optional proof image
   - Supports proof download as JPG
   - Native save target is `Documents/Dena/` (no share sheet flow)
@@ -130,14 +148,15 @@ Pattern used:
   - Includes edit action button that opens add form in edit mode
   - Header uses responsive two-row layout: title left, close button fixed top-right, edit button below
 - `AddLoanForm.jsx`
-  - Captures new loan fields
-  - Auto-suggests weekly interest = `Math.floor(principal * 0.1)`
-  - Converts chosen date into Dhaka timezone date string (`YYYY-MM-DD`) before save
+  - Captures new loan fields; field **প্রতি কিস্তিতে মুনাফা**
+  - Auto-suggests munafa from `calculateInterestFromPreset` on **create** only (edit mode preserves custom amount)
+  - Converts chosen date into Dhaka `YYYY-MM-DD` before save
   - Supports optional proof image from camera/gallery
   - Opens `DocumentCropModal` before final save
   - Includes full-screen zoomable preview for uploaded/cropped proof image
 - `PaymentModal.jsx`
-  - Supports partial mode (weekly interest) and full-settlement mode
+  - Munafa joma vs full settlement; shows বাকি কিস্তি list, এখন জমা হবে, পরবর্তী কিস্তি
+  - Payment date picker defaults to today (Dhaka); backdating allowed
 - `DeleteModal.jsx`
   - Dangerous action confirmation
 - `DocumentCropModal.jsx`
@@ -146,7 +165,8 @@ Pattern used:
 - `LiveClock.jsx`
   - 1-second ticking Bengali date/time for `Asia/Dhaka`
 - `NotificationDebugPanel.jsx`
-  - now rendered inside Settings modal test section (not logo-tap trigger)
+  - Rendered inside Settings modal test section (not logo-tap trigger)
+  - **পরবর্তী কিস্তির তারিখ ঠিক করুন** runs `recalculateActiveLoansToFixedSchedule()`
 - `App.jsx` (updater + restore extensions)
   - checks latest GitHub release (`/releases/latest`)
   - compares with installed app version and opens update modal when newer
@@ -156,16 +176,19 @@ Pattern used:
 
 ## 6) Timezone and Date Behavior
 
-Date handling is mixed but deliberate:
+**Single rule:** business calendar = **`Asia/Dhaka`**.
 
-- New loan `startDate` is stored as `YYYY-MM-DD` (Dhaka-normalized in add form).
-- Payment dates and next payment dates use full ISO timestamps.
-- Display converts using Bengali locale and JS Date behavior.
+| Data | Format |
+|------|--------|
+| `loan.startDate` | `YYYY-MM-DD` string |
+| `payment.date`, `payment.coveredDate`, `nextPaymentDate` | ISO (anchored to Dhaka midnight via `+06:00` helpers) |
+| UI date labels | `toLocaleDateString('bn-BD', { timeZone: 'Asia/Dhaka' })` |
+| LiveClock, payment modal YMD | Dhaka |
+| Missed/overdue/day-left math | Dhaka via `loanManager` helpers |
 
-Potential effect:
+We do **not** use GPS or device timezone for kisti logic. Default is Bangladesh.
 
-- Around timezone boundaries, date-only and ISO date interactions can be sensitive.
-- If you refactor date logic, test around midnight and month boundaries.
+Test around **Dhaka midnight** when changing date code.
 
 ## 7) Styling System
 
@@ -239,14 +262,58 @@ CI automation:
 
 ## 11) Current Risks / Technical Debt
 
-- Inconsistent identifiers:
-  - Android test package uses `com.getcapacitor.myapp` while app ID is `com.dena.app`
-- `README.md` may lag behind newer feature updates unless maintained each release
-- `getLoans()` has no safe recovery for corrupted localStorage
+- No automated tests for fixed-grid schedule (manual reference case in `AGENTS.md`)
+- Legacy bare-array backup restore may apply wrong `profitIntervalDays`
+- Restore flow overwrites restored dashboard month/year with current date
+- Settlement without clearing missed munafa
+- Editing `startDate` after payments: `coveredDate` frozen but future slots recompute
+- Android test package `com.getcapacitor.myapp` vs app id `com.dena.app`
 - Random ID generation without collision guard
-- Schema versioning/migrations not implemented
+- `getLoans()` recovers from corrupt JSON (returns `[]`) but does not repair partial corruption
 
-## 14) Recent UX/Styling Updates (2026-04)
+### Git note (2026-06)
+
+If `refs/heads/master` becomes all zeros after a crash, repair by pointing master to `origin/master` and `git reset --mixed`. Dangling commits may exist on `recovery-local-work`.
+
+## 12) Safe Change Checklist
+
+When modifying behavior:
+
+1. Update logic in `loanManager.js` first; extend `recalculateActiveLoansToFixedSchedule` if schema changes.
+2. Verify `getLoanDueState` + reference test case in `AGENTS.md` (start ২০/৫, interval 7, joma scenarios).
+3. Confirm `LoanCard`, `PaymentModal`, `LoanDetailsModal`, notifications stay consistent.
+4. Use Dhaka timezone helpers — never mix device-local midnight for dues.
+5. Run `npm run lint` and `npm run build`.
+6. If native-impacting, `npx cap sync android`.
+
+When changing loan schema:
+
+1. Add backward-compatible reads for old records.
+2. Keep old records functional (or provide migration logic).
+3. Validate summary calculations still match expectations.
+
+## 13) Recommended Next Improvements
+
+- Add unit tests for fixed-grid schedule (`getLoanDueState`, multiple jomas, missed cycles).
+- Fix restore to honor backed-up `profitIntervalDays` and dashboard month/year.
+- Warn on settlement when missed kisti remain.
+- Align package/app IDs and branding (`Dena` vs Bengali product label).
+- Replace template `README.md` with real project docs.
+- Add missing favicon asset or remove references.
+
+## 14) Recent Logic and UX Updates (2026-06)
+
+- Fixed kisti schedule engine and `getLoanDueState` API
+- `coveredDate` persistence on munafa payments + migration
+- Bangladesh timezone throughout `loanManager` and date display
+- কিস্তি-based Bengali copy; Noto Sans Bengali font
+- Loan card color sections and compact mobile buttons
+- `interestPerInstallment` schema with legacy normalization
+- Notifications tied to `getLoanDueState`
+- Payment modal uses live `loanId` lookup
+- Debug: **পরবর্তী কিস্তির তারিখ ঠিক করুন** in `NotificationDebugPanel`
+
+## 15) Recent UX/Styling Updates (2026-04)
 
 - Added status-specific glow and animated sweep effects for loan cards.
 - Added highlighted summary stat cards (principal/profit emphasis).
@@ -260,27 +327,3 @@ CI automation:
 - Added responsive safeguards for small-device buttons (including settings/test panels).
 - Updated loan details modal header responsiveness and close icon highlight styling.
 - Added dynamic Bengali footer copyright year range.
-
-## 12) Safe Change Checklist
-
-When modifying behavior:
-
-1. Update logic in `loanManager.js` first.
-2. Confirm dependent component assumptions in `Dashboard`, `LoanCard`, and modals.
-3. Verify Bengali display and formatting remains correct.
-4. Run `npm run lint`.
-5. If native-impacting change, run `npm run build` and `npx cap sync android`.
-
-When changing loan schema:
-
-1. Add backward-compatible reads for old records.
-2. Keep old records functional (or provide migration logic).
-3. Validate summary calculations still match expectations.
-
-## 13) Recommended Next Improvements
-
-- Add defensive `try/catch` around JSON parse in `getLoans()`.
-- Add unit tests for `loanManager` date and stats functions.
-- Align package/app IDs and branding (`Dena` vs Bengali product label).
-- Replace template `README.md` with real project docs.
-- Add missing favicon asset or remove references.
