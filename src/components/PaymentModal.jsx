@@ -1,10 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { getLastInterestPayment } from '../utils/loanManager';
+import {
+  getInterestPaymentCoveredDate,
+  getLastInterestPayment,
+  getLoanInterestAmount,
+  getLoanDueState,
+} from '../utils/loanManager';
+
+const BUSINESS_TIMEZONE = 'Asia/Dhaka';
 
 const formatPaymentDateYmd = (date) => {
-  const tzDate = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
+  const tzDate = new Date(date.toLocaleString('en-US', { timeZone: BUSINESS_TIMEZONE }));
   const yyyy = tzDate.getFullYear();
   const mm = String(tzDate.getMonth() + 1).padStart(2, '0');
   const dd = String(tzDate.getDate()).padStart(2, '0');
@@ -12,8 +19,14 @@ const formatPaymentDateYmd = (date) => {
 };
 
 export default function PaymentModal({ loan, isSettle, profitIntervalDays = 7, onConfirm, onCancel }) {
-  const [amount, setAmount] = useState(isSettle ? loan.principal.toString() : loan.interestPerWeek.toString());
+  const installmentAmount = getLoanInterestAmount(loan);
+  const defaultAmount = isSettle ? Number(loan.principal) : installmentAmount;
+  const [amount, setAmount] = useState(String(defaultAmount));
   const [paymentDate, setPaymentDate] = useState(() => new Date());
+
+  useEffect(() => {
+    setAmount(String(defaultAmount));
+  }, [defaultAmount]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -24,12 +37,21 @@ export default function PaymentModal({ loan, isSettle, profitIntervalDays = 7, o
 
   const intervalLabel = Number(profitIntervalDays || 7).toLocaleString('bn-BD');
   const lastInterestPayment = !isSettle ? getLastInterestPayment(loan) : null;
+  const lastInterestCoveredDate = lastInterestPayment
+    ? getInterestPaymentCoveredDate(loan, lastInterestPayment, profitIntervalDays)
+    : '';
+  const { missedCycles, missedDueDates, nextPaymentDate, upcomingPaymentDate } = !isSettle
+    ? getLoanDueState(loan, profitIntervalDays)
+    : { missedCycles: 0, missedDueDates: [], nextPaymentDate: '', upcomingPaymentDate: '' };
+  const currentDueDate = missedDueDates[0] || nextPaymentDate;
 
-  const banglaDays = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
   const formatBnDate = (isoString) => {
     const d = new Date(isoString);
-    const datePart = d.toLocaleDateString('bn-BD');
-    const dayName = banglaDays[d.getDay()];
+    const datePart = d.toLocaleDateString('bn-BD', { timeZone: BUSINESS_TIMEZONE });
+    const dayName = new Intl.DateTimeFormat('bn-BD', {
+      timeZone: BUSINESS_TIMEZONE,
+      weekday: 'long',
+    }).format(d);
     return `${datePart} (${dayName})`;
   };
 
@@ -38,10 +60,10 @@ export default function PaymentModal({ loan, isSettle, profitIntervalDays = 7, o
       <div className="modal-content">
         <div className="mb-6">
             <h2 className="text-2xl font-bold mb-2 text-pure">
-              {isSettle ? 'পুরো টাকা বুঝে নিন' : 'সাপ্তাহিক মুনাফা জমা নিন'}
+              {isSettle ? 'পুরো টাকা বুঝে নিন' : 'মুনাফা জমা নিন'}
             </h2>
             <p className="text-sm text-secondary">
-              {isSettle ? `${loan.name} এর হিসাবটি পুরোপুরি পরিশোধ করা হচ্ছে।` : `${loan.name} এর এই সপ্তাহের মুনাফা জমা করা হচ্ছে।`}
+              {isSettle ? `${loan.name} এর হিসাবটি পুরোপুরি পরিশোধ করা হচ্ছে।` : `${loan.name} এর কিস্তির মুনাফা জমা করা হচ্ছে।`}
             </p>
         </div>
 
@@ -51,20 +73,52 @@ export default function PaymentModal({ loan, isSettle, profitIntervalDays = 7, o
                 <div className="flex justify-between items-center">
                     <span className="text-sm text-muted">পাওয়ার কথা</span>
                     <span className="font-bold text-lg" style={{ color: isSettle ? 'var(--color-warning)' : 'var(--color-success)'}}>
-                        {isSettle ? loan.principal.toLocaleString('bn-BD') : loan.interestPerWeek.toLocaleString('bn-BD')} ৳
+                        {defaultAmount.toLocaleString('bn-BD')} ৳
                     </span>
                  </div>
              </div>
 
-            {!isSettle && lastInterestPayment && (
-              <div style={{ padding: '0.85rem', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', marginBottom: '1rem', border: '1px solid var(--border-subtle)' }}>
-                <span className="text-xs text-muted">শেষ জমা ছিল</span>
-                <p className="text-sm font-semibold mt-1" style={{ color: 'var(--color-warning)' }}>
-                  {Number(lastInterestPayment.amount).toLocaleString('bn-BD')} ৳
-                  <span className="text-xs text-secondary font-normal" style={{ marginLeft: '0.35rem' }}>
-                    ({formatBnDate(lastInterestPayment.date)})
-                  </span>
+            {!isSettle && missedCycles > 0 && (
+              <div className="payment-missed-box">
+                <span className="text-xs text-muted">বাকি কিস্তি ({Number(missedCycles).toLocaleString('bn-BD')})</span>
+                <ul className="loan-missed-dates-list payment-missed-dates-list">
+                  {missedDueDates.map((dueDate, index) => (
+                    <li key={dueDate} className="loan-missed-date-item">
+                      <span className="loan-missed-date-index">
+                        {Number(index + 1).toLocaleString('bn-BD')}.
+                      </span>
+                      <span className="loan-missed-date-text">{formatBnDate(dueDate)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted mt-2">
+                  এই জমা হবে: <strong>{formatBnDate(currentDueDate)}</strong>
                 </p>
+                <p className="text-xs text-muted mt-1">
+                  নতুন পরবর্তী কিস্তি: <strong>{formatBnDate(upcomingPaymentDate)}</strong>
+                </p>
+                <p className="text-xs text-muted mt-1">
+                  এই জমা সবচেয়ে পুরনো বাকি কিস্তির জন্য গণ্য হবে।
+                </p>
+              </div>
+            )}
+
+            {!isSettle && lastInterestPayment && (
+              <div className="loan-joma-preview">
+                <div className="loan-joma-top">
+                  <span className="loan-info-tile-label">শেষ জমা ছিল</span>
+                  <span className="loan-joma-amount">{Number(lastInterestPayment.amount).toLocaleString('bn-BD')} ৳</span>
+                </div>
+                <span className="loan-joma-paid-date">{formatBnDate(lastInterestPayment.date)}</span>
+                {lastInterestCoveredDate && (
+                  <div className="loan-joma-done">
+                    <span className="loan-joma-done-mark" aria-hidden="true">✓</span>
+                    <div className="loan-joma-done-body">
+                      <span className="loan-joma-done-label">সম্পন্ন কিস্তি</span>
+                      <span className="loan-joma-done-date">{formatBnDate(lastInterestCoveredDate)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -97,7 +151,7 @@ export default function PaymentModal({ loan, isSettle, profitIntervalDays = 7, o
             />
             {!isSettle && (
               <span className="text-xs mt-2 text-muted" style={{ marginLeft: '0.25rem' }}>
-                পরবর্তী মুনাফার তারিখ সবসময় নেওয়ার তারিখ থেকে {intervalLabel} দিন পর পর হিসাব হবে। দেরিতে জমা দিলেও সেই সাইকেল বদলাবে না।
+                প্রতি জমা = এক কিস্তির মুনাফা। কিস্তির তারিখ {intervalLabel} দিন পর পর ঠিক থাকবে। দেরিতে জমা দিলে আগের বাকি কিস্তি মাফ হবে না — প্রতিটি বাকি কিস্তির জন্য আলাদা জমা লাগবে।
               </span>
             )}
           </div>
