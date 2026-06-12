@@ -9,6 +9,7 @@ const DEFAULT_PROFIT_PRESET = {
 };
 const AUTO_BACKUP_CONFIG_KEY = 'denaAutoBackupConfig';
 const LAST_AUTO_BACKUP_AT_KEY = 'denaLastAutoBackupAt';
+const BUSINESS_TIMEZONE = 'Asia/Dhaka';
 const DEFAULT_AUTO_BACKUP_CONFIG = {
   enabled: false,
   intervalDays: 1,
@@ -43,13 +44,36 @@ const normalizeAutoBackupConfig = (value) => {
   };
 };
 
+export const getLoanInterestAmount = (loan) => {
+  const amount = Number(loan?.interestPerInstallment ?? loan?.interestPerWeek ?? 0);
+  return Number.isFinite(amount) ? amount : 0;
+};
+
+const normalizeLoan = (loan) => {
+  if (!loan || typeof loan !== 'object') return loan;
+  const rest = { ...loan };
+  delete rest.interestPerWeek;
+  return {
+    ...rest,
+    interestPerInstallment: getLoanInterestAmount(loan),
+    payments: Array.isArray(loan.payments) ? loan.payments : [],
+  };
+};
+
 export const getLoans = () => {
   const data = localStorage.getItem(LOANS_KEY);
-  return data ? JSON.parse(data) : [];
+  if (!data) return [];
+
+  try {
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed.map(normalizeLoan) : [];
+  } catch {
+    return [];
+  }
 };
 
 export const saveLoans = (loans) => {
-  localStorage.setItem(LOANS_KEY, JSON.stringify(loans));
+  localStorage.setItem(LOANS_KEY, JSON.stringify(loans.map(normalizeLoan)));
 };
 
 export const getProfitIntervalDays = () => {
@@ -123,21 +147,39 @@ export const calculateInterestFromPreset = (principalAmount, preset = getProfitP
   return Math.max(0, Math.round(interest));
 };
 
-const toStartOfDay = (dateValue) => {
-  if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateValue)) {
-    const [year, month, day] = dateValue.slice(0, 10).split('-').map(Number);
-    return new Date(year, month - 1, day);
+const toBangladeshYmd = (dateValue = new Date()) => {
+  if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+    return dateValue;
   }
 
   const date = new Date(dateValue);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (Number.isNaN(date.getTime())) return toBangladeshYmd(new Date());
+
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const bangladeshYmdToDate = (ymd) => new Date(`${ymd}T00:00:00+06:00`);
+
+const shiftBangladeshYmdDays = (ymd, days) => {
+  const date = bangladeshYmdToDate(ymd);
+  date.setUTCDate(date.getUTCDate() + days);
+  return toBangladeshYmd(date);
+};
+
+const toStartOfDay = (dateValue) => {
+  return bangladeshYmdToDate(toBangladeshYmd(dateValue));
 };
 
 const getFixedScheduleSlot = (startDate, intervalDays, slotIndex) => {
-  const anchor = toStartOfDay(startDate);
-  const slot = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
-  slot.setDate(slot.getDate() + slotIndex * intervalDays);
-  return slot;
+  const anchorYmd = toBangladeshYmd(startDate);
+  return bangladeshYmdToDate(shiftBangladeshYmdDays(anchorYmd, slotIndex * intervalDays));
 };
 
 const buildNextPaymentDate = (startDate, intervalDays) => {
@@ -145,17 +187,89 @@ const buildNextPaymentDate = (startDate, intervalDays) => {
   return getFixedScheduleSlot(startDate, intervalDays, 1).toISOString();
 };
 
-const getNextFixedDueDateAfterPayment = (startDate, intervalDays, paymentDate) => {
-  const reference = toStartOfDay(paymentDate);
+const countInterestPayments = (loan) => {
+  if (!Array.isArray(loan?.payments)) return 0;
+  return loan.payments.filter((payment) => payment.type !== 'SETTLEMENT').length;
+};
+
+const computeNextPaymentDateForLoan = (loan, intervalDays) => {
+  const paidCycles = countInterestPayments(loan);
+  return getFixedScheduleSlot(loan.startDate, intervalDays, paidCycles + 1).toISOString();
+};
+
+const getCoveredDateForPaymentIndex = (loan, intervalDays, interestPaymentIndex) => (
+  getFixedScheduleSlot(loan.startDate, intervalDays, interestPaymentIndex).toISOString()
+);
+
+const withCoveredDates = (loan, intervalDays) => {
+  if (!Array.isArray(loan?.payments)) return loan;
+
+  let interestPaymentIndex = 0;
+  let changed = false;
+  const payments = loan.payments.map((payment) => {
+    if (payment.type === 'SETTLEMENT') return payment;
+
+    interestPaymentIndex += 1;
+    if (payment.coveredDate) return payment;
+
+    changed = true;
+    return {
+      ...payment,
+      coveredDate: getCoveredDateForPaymentIndex(loan, intervalDays, interestPaymentIndex),
+    };
+  });
+
+  return changed ? { ...loan, payments } : loan;
+};
+
+const getNextUpcomingFixedDate = (startDate, intervalDays) => {
+  const today = toStartOfDay(new Date());
 
   for (let slotIndex = 1; slotIndex < 10000; slotIndex += 1) {
     const slot = getFixedScheduleSlot(startDate, intervalDays, slotIndex);
-    if (slot > reference) {
+    if (slot > today) {
       return slot.toISOString();
     }
   }
 
-  return getFixedScheduleSlot(startDate, intervalDays, 2).toISOString();
+  return buildNextPaymentDate(startDate, intervalDays);
+};
+
+// Each unpaid cycle whose due date is today or already past (oldest first).
+export const getMissedDueCycleDates = (loan, intervalDays = getProfitIntervalDays()) => {
+  if (loan?.status !== 'ACTIVE') return [];
+
+  const today = toStartOfDay(new Date());
+  const paidCycles = countInterestPayments(loan);
+  const dates = [];
+
+  for (let slotIndex = paidCycles + 1; slotIndex < 10000; slotIndex += 1) {
+    const slot = getFixedScheduleSlot(loan.startDate, intervalDays, slotIndex);
+    if (slot > today) break;
+    dates.push(slot.toISOString());
+  }
+
+  return dates;
+};
+
+export const getMissedDueCycles = (loan, intervalDays = getProfitIntervalDays()) => (
+  getMissedDueCycleDates(loan, intervalDays).length
+);
+
+export const getLoanDueState = (loan, intervalDays = getProfitIntervalDays()) => {
+  const nextPaymentDate = computeNextPaymentDateForLoan(loan, intervalDays);
+  const missedDueDates = getMissedDueCycleDates(loan, intervalDays);
+  const upcomingPaymentDate = missedDueDates.length > 0
+    ? getNextUpcomingFixedDate(loan.startDate, intervalDays)
+    : nextPaymentDate;
+
+  return {
+    nextPaymentDate,
+    upcomingPaymentDate,
+    missedCycles: missedDueDates.length,
+    missedDueDates,
+    paidCycles: countInterestPayments(loan),
+  };
 };
 
 const dueDatesMatch = (leftValue, rightValue) => {
@@ -166,9 +280,8 @@ const paymentDateToIso = (paymentDate) => {
   if (!paymentDate) {
     return toStartOfDay(new Date()).toISOString();
   }
-  if (typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(paymentDate)) {
-    const [year, month, day] = paymentDate.slice(0, 10).split('-').map(Number);
-    return new Date(year, month - 1, day).toISOString();
+  if (typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) {
+    return bangladeshYmdToDate(paymentDate).toISOString();
   }
   return toStartOfDay(paymentDate).toISOString();
 };
@@ -199,21 +312,24 @@ export const collectPayment = (loanId, amount, isFullSettlement, paymentDate = n
   if (loanIndex > -1) {
     const loan = loans[loanIndex];
     const paymentDateIso = paymentDateToIso(paymentDate);
+    const coveredDate = isFullSettlement
+      ? null
+      : getCoveredDateForPaymentIndex(loan, intervalDays, countInterestPayments(loan) + 1);
     
-    loan.payments.push({
+    const payment = {
       date: paymentDateIso,
       amount,
       type: isFullSettlement ? 'SETTLEMENT' : 'INTEREST'
-    });
+    };
+    if (coveredDate) {
+      payment.coveredDate = coveredDate;
+    }
+    loan.payments.push(payment);
 
     if (isFullSettlement) {
       loan.status = 'DONE';
     } else {
-      loan.nextPaymentDate = getNextFixedDueDateAfterPayment(
-        loan.startDate,
-        intervalDays,
-        paymentDateIso,
-      );
+      loan.nextPaymentDate = computeNextPaymentDateForLoan(loan, intervalDays);
     }
     
     saveLoans(loans);
@@ -228,10 +344,7 @@ export const applyProfitIntervalToActiveLoans = (days) => {
   const updatedLoans = loans.map((loan) => {
     if (loan.status !== 'ACTIVE') return loan;
 
-    const lastInterestPayment = getLastInterestPayment(loan);
-    const nextPaymentDate = lastInterestPayment
-      ? getNextFixedDueDateAfterPayment(loan.startDate, intervalDays, lastInterestPayment.date)
-      : buildNextPaymentDate(loan.startDate, intervalDays);
+    const nextPaymentDate = computeNextPaymentDateForLoan(loan, intervalDays);
 
     return { ...loan, nextPaymentDate };
   });
@@ -255,11 +368,8 @@ export const updateLoan = (loanId, loanData) => {
   if (loanIndex > -1) {
     const existing = loans[loanIndex];
     const startDate = loanData.startDate;
-    const lastInterestPayment = getLastInterestPayment(existing);
     const nextPaymentDate = existing.status === 'ACTIVE'
-      ? (lastInterestPayment
-        ? getNextFixedDueDateAfterPayment(startDate, intervalDays, lastInterestPayment.date)
-        : buildNextPaymentDate(startDate, intervalDays))
+      ? computeNextPaymentDateForLoan({ ...existing, startDate }, intervalDays)
       : existing.nextPaymentDate;
 
     loans[loanIndex] = {
@@ -267,7 +377,7 @@ export const updateLoan = (loanId, loanData) => {
       name: loanData.name,
       startDate,
       principal: Number(loanData.principal),
-      interestPerWeek: Number(loanData.interestPerWeek),
+      interestPerInstallment: getLoanInterestAmount(loanData),
       proofImage: loanData.proofImage || null,
       nextPaymentDate,
     };
@@ -289,25 +399,47 @@ export const getLastInterestPayment = (loan) => {
   return null;
 };
 
+export const getInterestPaymentCoveredDate = (
+  loan,
+  targetPayment,
+  intervalDays = getProfitIntervalDays(),
+) => {
+  if (!loan?.startDate || !Array.isArray(loan?.payments) || !targetPayment) return '';
+  if (targetPayment.coveredDate) return targetPayment.coveredDate;
+
+  let interestPaymentIndex = 0;
+  for (const payment of loan.payments) {
+    if (payment.type === 'SETTLEMENT') continue;
+    interestPaymentIndex += 1;
+    if (payment === targetPayment) {
+      return getCoveredDateForPaymentIndex(loan, intervalDays, interestPaymentIndex);
+    }
+  }
+
+  return '';
+};
+
 export const recalculateActiveLoansToFixedSchedule = () => {
   const intervalDays = getProfitIntervalDays();
   const loans = getLoans();
   let updatedCount = 0;
 
   const updatedLoans = loans.map((loan) => {
-    if (loan.status !== 'ACTIVE') return loan;
+    const loanWithCoveredDates = withCoveredDates(loan, intervalDays);
+    const coveredDatesChanged = loanWithCoveredDates !== loan;
+    if (loan.status !== 'ACTIVE') {
+      if (coveredDatesChanged) updatedCount += 1;
+      return loanWithCoveredDates;
+    }
 
-    const lastInterestPayment = getLastInterestPayment(loan);
-    const nextPaymentDate = lastInterestPayment
-      ? getNextFixedDueDateAfterPayment(loan.startDate, intervalDays, lastInterestPayment.date)
-      : buildNextPaymentDate(loan.startDate, intervalDays);
+    const nextPaymentDate = computeNextPaymentDateForLoan(loanWithCoveredDates, intervalDays);
 
-    if (dueDatesMatch(loan.nextPaymentDate, nextPaymentDate)) {
-      return loan;
+    if (!coveredDatesChanged && dueDatesMatch(loan.nextPaymentDate, nextPaymentDate)) {
+      return loanWithCoveredDates;
     }
 
     updatedCount += 1;
-    return { ...loan, nextPaymentDate };
+    return { ...loanWithCoveredDates, nextPaymentDate };
   });
 
   if (updatedCount > 0) {
@@ -351,8 +483,8 @@ export const getSummaryStats = (loans, selectedYear, selectedMonth) => {
                 const amount = Number(payment.amount);
                 totalInterestCollected += amount;
                 
-                const pDate = new Date(payment.date);
-                if (pDate.getFullYear() === currentSelYear && pDate.getMonth() === currentSelMonth) {
+                const [paymentYear, paymentMonth] = toBangladeshYmd(payment.date).split('-').map(Number);
+                if (paymentYear === currentSelYear && paymentMonth - 1 === currentSelMonth) {
                    monthlyInterest += amount;
                 }
             }
