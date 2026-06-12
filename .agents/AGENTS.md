@@ -26,10 +26,10 @@ There is no backend API. All business data is stored in browser/app `localStorag
 
 ## Canonical Runtime Flow
 
-1. `index.html` loads `/src/main.jsx`.
+1. `index.html` loads `/src/main.jsx` (Noto Sans Bengali from Google Fonts).
 2. `src/main.jsx` renders `<App />`.
-3. `src/App.jsx` loads saved loans from `getLoans()`.
-4. User actions (add/payment/delete) call functions in `src/utils/loanManager.js`.
+3. `src/App.jsx` initializes loans via `recalculateActiveLoansToFixedSchedule().loans` (migrates `coveredDate`, fixes `nextPaymentDate`).
+4. User actions (add/payment/delete/edit) call functions in `src/utils/loanManager.js`.
 5. Optional proof image flow in add form:
    - pick from camera/gallery
    - optional crop (`DocumentCropModal`)
@@ -47,6 +47,8 @@ There is no backend API. All business data is stored in browser/app `localStorag
     - `LoanDetailsModal.jsx`: full loan details + proof image + JPG download
     - `DocumentCropModal.jsx`: free crop / skip-crop flow for proof image
   - `utils/loanManager.js`: core business and persistence logic (most critical file)
+  - `services/notificationService.js`: Android kisti reminders (uses `getLoanDueState`)
+  - `services/apkUpdate.js`: in-app APK update helper
   - `utils/imageCompression.js`: client-side proof image resizing/compression
   - `index.css`: full app styling
 - `public/`: static assets (`icons.svg`)
@@ -63,7 +65,7 @@ Loan object (stored in `denaLoans` array):
 - `name`: string
 - `startDate`: string (`YYYY-MM-DD`)
 - `principal`: number
-- `interestPerWeek`: number
+- `interestPerInstallment`: number (per kisti munafa amount; legacy records may still have `interestPerWeek` until normalized on read)
 - `proofImage`: optional object
   - `dataUrl`: compressed image payload
   - `mimeType`: stored image MIME type (currently `image/webp`)
@@ -89,37 +91,80 @@ Settings and UI state values (stored separately):
 
 Payment entry:
 
-- `date`: ISO datetime string
+- `date`: ISO datetime string (Dhaka calendar day when user picks date in modal)
 - `amount`: number
 - `type`: `"INTEREST"` or `"SETTLEMENT"`
+- `coveredDate`: optional ISO datetime — which fixed kisti slot this joma closed (stored on new jomas; migrated for old records)
+
+## Fixed Kisti Schedule (Critical — Read First)
+
+All due dates are computed from a **fixed calendar grid** anchored to `startDate` + global `denaProfitIntervalDays` (7/8/10/15/30…).
+
+- Slot *n* due date = `startDate + n × intervalDays` (slot 1 is first munafa due, not start day).
+- **Late payment does not shift the grid.** Missing a due date leaves that slot unpaid.
+- **1 munafa joma = 1 kisti slot**, always the **oldest unpaid** slot first (by payment count order, not by payment date chosen in UI).
+- UI labels use **কিস্তি** (not সপ্তাহ) because interval is configurable days.
+
+Key exports in `loanManager.js`:
+
+- `getLoanDueState(loan)` → `{ nextPaymentDate, upcomingPaymentDate, missedCycles, missedDueDates, paidCycles }`
+- `getMissedDueCycleDates(loan)` → unpaid slots whose due date is today or past (oldest first)
+- `getInterestPaymentCoveredDate(loan, payment)` → prefers stored `payment.coveredDate`
+- `recalculateActiveLoansToFixedSchedule()` → migrates `coveredDate`, reconciles `nextPaymentDate` cache
+- `calculateDaysLeft(iso)` → day diff using **Asia/Dhaka** calendar days
+
+`nextPaymentDate` on the loan object is a **cache** updated on payment/interval change. Cards and modals should prefer `getLoanDueState()` for display.
+
+### Reference test case (7-day interval)
+
+- Start **২০/৫/২০২৬**, interval **7** → dues: ২৭/৫, ৩/৬, ১০/৬, ১৭/৬…
+- **1 joma on ১১/৬ (৭০০ ৳)** covers **২৭/৫** (oldest unpaid).
+- Expected UI:
+  - **বাকি কিস্তি (২):** ৩/৬, ১০/৬
+  - **এখন জমা হবে:** ৩/৬
+  - **নতুন পরবর্তী কিস্তি:** ১৭/৬
+  - **সম্পন্ন কিস্তি:** ২৭/৫
+  - **বাকি status:** overdue from current due (৩/৬), not from completed slot
+
+After **3 total jomas** (covering ২৭/৫, ৩/৬, ১০/৬), **পরবর্তী কিস্তি** must be **১৭/৬** — never jump back to ২৭/৫.
 
 ## Business Rules Implemented
 
 - New loan:
   - `status = ACTIVE`
-  - `nextPaymentDate = startDate + configured interval days`
+  - `nextPaymentDate = startDate + 1 × interval` (slot 1)
   - `payments = []`
-- Interest collection:
-  - appends payment type `INTEREST`
-  - advances `nextPaymentDate` by configured interval days from current `nextPaymentDate`
+- Interest collection (`collectPayment`):
+  - appends `INTEREST` with `coveredDate` = slot `(paidCount + 1)`
+  - recomputes `nextPaymentDate` = slot `(paidCount + 1)` after append (i.e. next unpaid slot)
+  - payment **date** field is when money was received; it does **not** pick which slot is covered
 - Interval update from Settings:
-  - saves `denaProfitIntervalDays` (1-365, default 7)
-  - recalculates all `ACTIVE` loans' `nextPaymentDate` immediately
+  - saves `denaProfitIntervalDays` (1–365, default 7)
+  - recalculates all `ACTIVE` loans' `nextPaymentDate` from fixed grid
+  - does **not** rewrite stored `coveredDate` on old payments (historical record preserved)
 - Full settlement:
-  - appends payment type `SETTLEMENT`
-  - sets `status = DONE`
+  - appends `SETTLEMENT`, sets `status = DONE`
+  - does not require all missed kisti to be collected first (by design)
 - Dashboard summary:
-  - totals active principal from `ACTIVE` loans
-  - sums all-time interest from `INTEREST` payments
-  - sums monthly interest from selected month/year
+  - active principal from `ACTIVE` loans
+  - all-time interest from `INTEREST` payments
+  - monthly interest filtered by **Dhaka** year/month of payment date
+- App open / debug:
+  - `recalculateActiveLoansToFixedSchedule()` runs on init and via Settings → ডিবাগ → **পরবর্তী কিস্তির তারিখ ঠিক করুন**
 
 ## UI and Interaction Notes
 
 - No route system (`react-router` not used).
 - Single-screen app with modal overlays.
-- Bengali locale display (`bn-BD`) across date/number formatting.
-- `LiveClock` uses `Asia/Dhaka` timezone.
-- `AddLoanForm` also normalizes selected date to Dhaka timezone before save.
+- Bengali locale display (`bn-BD`) with **`Asia/Dhaka`** for schedule math and date labels (not device timezone).
+- Font: **Noto Sans Bengali** (`index.html` + `src/index.css`); tuned minimum sizes for small labels.
+- Terminology: **কিস্তি** (installment on fixed grid), **বাকি কিস্তি**, **সম্পন্ন কিস্তি**, **প্রতি কিস্তির মুনাফা** — avoid সপ্তাহ/সাপ্তাহিক in UI.
+- `LiveClock` uses `Asia/Dhaka`.
+- `AddLoanForm` normalizes start date to Dhaka `YYYY-MM-DD`; **edit mode** does not auto-overwrite custom munafa from preset.
+- `PaymentModal` receives **live loan** from `loans.find(loanId)` (not a stale snapshot).
+- `LoanCard` color-coded sections: gray start, green last joma / সম্পন্ন কিস্তি, red বাকি কিস্তি, blue পরবর্তী কিস্তি, orange/green বাকি status.
+- Loan card action buttons use responsive grid; Bengali `word-break: keep-all` on buttons.
+- `App.jsx` `calendarDay` tick (60s + visibility/resume) refreshes overdue counts when the day changes.
 - Loan cards are tappable and open `LoanDetailsModal`.
 - Proof image upload is optional and never blocks loan creation.
 - Proof download from details modal is exported as JPG (client-side conversion).
@@ -151,6 +196,20 @@ Payment entry:
   - `LoanDetailsModal`
   - `DocumentCropModal`
   - shared zoom viewer modal
+
+## Recent Change Log (2026-06)
+
+- **Fixed kisti schedule:** dues from `startDate + n×interval`; late pay does not drift grid; `computeNextPaymentDateForLoan` uses `paidCycles + 1` slot directly.
+- **Bangladesh timezone:** all schedule/day-diff math via `Asia/Dhaka` (`toBangladeshYmd`, `bangladeshYmdToDate`).
+- **`coveredDate` on payments:** persisted per joma; migration in `recalculateActiveLoansToFixedSchedule`; UI shows **✓ সম্পন্ন কিস্তি**.
+- **কিস্তি wording** across `LoanCard`, `PaymentModal`, `LoanDetailsModal`, `AddLoanForm`.
+- **UI polish:** section color stripes, cleaner joma block layout, Noto Sans Bengali, mobile button fit.
+- **`interestPerInstallment`:** canonical field; `getLoanInterestAmount()` reads legacy `interestPerWeek` on load and normalizes on save.
+- **`getLoans()`:** try/catch + `normalizeLoan()` for corrupt JSON safety.
+- **Notifications:** `buildLoanNotifications` uses `getLoanDueState()` for due date, not stale `loan.nextPaymentDate` alone.
+- **DONE loans:** details modal hides **পরবর্তী কিস্তি**.
+- **Dashboard filters:** full `{ activeTab, selectedYear, selectedMonth }` persisted to `denaDashboardFilters` (restore still resets month/year to current — known quirk).
+- **Android version:** `versionName 3.8`, `versionCode 28` (check `android/app/build.gradle` for current).
 
 ## Recent Change Log (2026-04)
 
@@ -238,11 +297,17 @@ Workflow: `.github/workflows/build-android.yml` (`Android Signed Release Build`)
 - APK filename format: `Dena-v<versionName>.apk`
 - Artifact name format: `Dena-Android-v<versionName>-<versionCode>`
 
-## Known Inconsistencies to Keep in Mind
+## Known Limits and Remaining Quirks
 
-- App/package ID is now aligned to `com.dena.app` in Android + Capacitor.
-- App naming differs between layers (`Dena` vs Bengali title in UI).
-- Android test package names (`com.getcapacitor.myapp`) do not match app package.
+- Tracks **one current due** + **বাকি কিস্তি** list/count; does not auto-sum total money owed across all missed slots.
+- Joma **order** (count), not payment **date**, decides which kisti is covered.
+- **Settlement** can mark DONE without collecting all missed munafa.
+- **Legacy backup** (bare loans array without `profitIntervalDays`) may restore with wrong interval if current settings differ.
+- **Restore** resets dashboard month/year to current even when backup contained other values.
+- **Edit start date** on a loan with payments: stored `coveredDate` values stay, but future schedule recomputes from new anchor — use carefully.
+- **No automated tests** yet for schedule math.
+- App/package ID aligned to `com.dena.app`; Android test package still `com.getcapacitor.myapp`.
+- Product title in UI: **হিসাব রক্ষক**; repo/package name: `dena-app`.
 
 ## Guardrails for Future Agents
 
@@ -250,21 +315,23 @@ Workflow: `.github/workflows/build-android.yml` (`Android Signed Release Build`)
 - Use only `dena...` keys for `localStorage`.
 - Treat `src/utils/loanManager.js` as source of truth for business logic.
 - Keep Bengali UX text and locale behavior unless user requests language changes.
-- If changing loan schema, update create/read/update paths and backward compatibility.
-- After substantive edits, run `npm run lint`.
+- If changing loan schema, update `normalizeLoan`, create/read/update paths, backup/restore, and run migration in `recalculateActiveLoansToFixedSchedule`.
+- Do not use সপ্তাহ in user-facing copy when interval ≠ 7; use **কিস্তি**.
+- Default business timezone is **Asia/Dhaka** — do not ask for GPS/location permission for dates.
+- After substantive edits, run `npm run lint` and `npm run build`.
+- Do not commit unless the user explicitly asks.
 
 ## Suggested First Read Order for New Agents
 
-1. `src/utils/loanManager.js`
-2. `src/App.jsx`
-3. `src/components/Dashboard.jsx`
-4. `src/components/LoanCard.jsx`
-5. `src/components/LoanDetailsModal.jsx`
+1. `src/utils/loanManager.js` — fixed schedule, `getLoanDueState`, `coveredDate`
+2. `src/App.jsx` — init migration, modals, filters, calendar day refresh
+3. `src/components/LoanCard.jsx` + `PaymentModal.jsx` + `LoanDetailsModal.jsx`
+4. `src/services/notificationService.js`
+5. `src/components/Dashboard.jsx`
 6. `src/components/AddLoanForm.jsx`
-7. `src/components/DocumentCropModal.jsx`
-8. `src/utils/imageCompression.js`
-9. `.github/workflows/build-android.yml`
-10. `android/app/build.gradle`
+7. `src/components/NotificationDebugPanel.jsx` (schedule repair button)
+8. `.github/workflows/build-android.yml`
+9. `android/app/build.gradle`
 
 ## Where to Find Detailed Design Notes
 
