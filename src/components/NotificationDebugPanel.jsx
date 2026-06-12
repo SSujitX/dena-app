@@ -66,28 +66,28 @@ export default function NotificationDebugPanel({
   return (
     <div className="glass-card notification-debug-panel">
       <div className="notification-debug-summary">
-        <span className="text-xs text-muted">চলতি হিসাব</span>
-        <strong>{loans.length.toLocaleString('bn-BD')}</strong>
+        <span className="notification-debug-summary-label">চলতি হিসাব</span>
+        <strong className="notification-debug-summary-count">
+          {loans.length.toLocaleString('bn-BD')}
+        </strong>
       </div>
 
-      <div className="mb-4">
-        <p className="text-xs text-muted mb-2">হিসাব টুলস</p>
-        <div className="notification-debug-actions">
-          <button
-            type="button"
-            className="btn btn-primary btn-sm notification-debug-btn"
-            onClick={recalculateSchedule}
-          >
-            পরবর্তী কিস্তির তারিখ ঠিক করুন
-          </button>
-        </div>
-        <p className="text-xs text-muted mt-2">
+      <section className="notification-debug-section">
+        <h4 className="notification-debug-section-title">হিসাব টুলস</h4>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm notification-debug-btn notification-debug-btn-full"
+          onClick={recalculateSchedule}
+        >
+          পরবর্তী কিস্তির তারিখ ঠিক করুন
+        </button>
+        <p className="notification-debug-help">
           নেওয়ার তারিখ ও সেটিংসের ব্যবধান অনুযায়ী সব ACTIVE হিসাবের তারিখ আপডেট করবে।
         </p>
-      </div>
+      </section>
 
-      <div>
-        <p className="text-xs text-muted mb-2">নোটিফিকেশন</p>
+      <section className="notification-debug-section">
+        <h4 className="notification-debug-section-title">নোটিফিকেশন</h4>
         <div className="notification-debug-actions">
           <button type="button" className="btn btn-secondary btn-sm notification-debug-btn" onClick={() => handleAction(onRequestPermission, 'পারমিশন চেক সম্পন্ন')}>
             পারমিশন চেক
@@ -108,14 +108,14 @@ export default function NotificationDebugPanel({
             পেন্ডিং ক্লিয়ার
           </button>
         </div>
-      </div>
+      </section>
 
-      <p className="text-xs text-muted mt-4">{status}</p>
+      <p className="notification-debug-status">{status}</p>
 
       {pendingRows.length > 0 && (
-        <div className="mt-4" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+        <div className="notification-debug-pending-list">
           {pendingRows.map((item) => (
-            <p key={item.id} className="text-xs text-secondary" style={{ marginBottom: '0.4rem' }}>
+            <p key={item.id} className="notification-debug-pending-row">
               #{item.id} - {item.title} - {item.body}
             </p>
           ))}
