@@ -65,6 +65,38 @@ jobs:
         name: Dena-Android-v${{ env.VERSION_NAME }}-${{ env.VERSION_CODE }}
         path: android/app/build/outputs/apk/release/${{ env.APK_FILE_NAME }}
 
+    - name: Prepare release notes from CHANGELOG.md
+      run: |
+        CHANGELOG_FILE=""
+        for candidate in CHANGELOG.md CNANGELOG.md; do
+          if [ -f "$candidate" ]; then
+            CHANGELOG_FILE="$candidate"
+            break
+          fi
+        done
+
+        RELEASE_NOTES="Automated Android release build."
+        if [ -n "$CHANGELOG_FILE" ]; then
+          EXTRACTED=$(sed 's/\r$//' "$CHANGELOG_FILE" | awk -v ver="${VERSION_NAME}" '
+            BEGIN { found=0 }
+            $0 ~ "^## v" ver " " { found=1 }
+            found && /^## v[0-9]/ && $0 !~ "^## v" ver " " { exit }
+            found { print }
+          ' | sed '/^[[:space:]]*$/d')
+          if [ -n "$EXTRACTED" ]; then
+            RELEASE_NOTES="$EXTRACTED"
+            echo "Using release notes from ${CHANGELOG_FILE} (v${VERSION_NAME})."
+          else
+            echo "No ## v${VERSION_NAME} section in ${CHANGELOG_FILE}; using default notes."
+          fi
+        else
+          echo "No CHANGELOG.md found; using default notes."
+        fi
+
+        {
+          printf '%s\n' "$RELEASE_NOTES"
+        } > /tmp/release-notes.md
+
     - name: Publish GitHub Release (Tag + APK)
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,5 +110,5 @@ jobs:
           gh release upload "$TAG_NAME" "$APK_PATH" --clobber
         else
           echo "Creating release ${TAG_NAME} with APK."
-          gh release create "$TAG_NAME" "$APK_PATH" --title "$RELEASE_TITLE" --notes "Automated Android release build."
+          gh release create "$TAG_NAME" "$APK_PATH" --title "$RELEASE_TITLE" --notes-file /tmp/release-notes.md
         fi
