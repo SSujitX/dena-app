@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { compressImage } from '../utils/imageCompression';
-import { calculateInterestFromPreset } from '../utils/loanManager';
+import { calculateInterestFromPreset, getLoanInterestAmount } from '../utils/loanManager';
 
 const DocumentCropModal = lazy(() => import('./DocumentCropModal'));
 const ZoomableImageViewerModal = lazy(() => import('./ZoomableImageViewerModal'));
@@ -24,8 +24,8 @@ export default function AddLoanForm({ onSave, onCancel, initialLoan = null, mode
   const [startDate, setStartDate] = useState(parseLoanStartDate(initialLoan?.startDate));
   
   const [principal, setPrincipal] = useState(initialLoan?.principal ? String(initialLoan.principal) : '');
-  const [interestPerWeek, setInterestPerWeek] = useState(
-    initialLoan?.interestPerWeek ? String(initialLoan.interestPerWeek) : ''
+  const [interestPerInstallment, setInterestPerInstallment] = useState(
+    initialLoan ? String(getLoanInterestAmount(initialLoan) || '') : ''
   );
   const [proofImage, setProofImage] = useState(initialLoan?.proofImage || null);
   const isEditMode = mode === 'edit';
@@ -41,18 +41,21 @@ export default function AddLoanForm({ onSave, onCancel, initialLoan = null, mode
 
   const handlePrincipalChange = (value) => {
     setPrincipal(value);
+    if (isEditMode) return;
+
     if (!value || Number.isNaN(Number(value))) {
-      setInterestPerWeek('');
+      setInterestPerInstallment('');
       return;
     }
-    setInterestPerWeek(String(calculateInterestFromPreset(Number(value), profitPreset || undefined)));
+    setInterestPerInstallment(String(calculateInterestFromPreset(Number(value), profitPreset || undefined)));
   };
 
   useEffect(() => {
+    if (isEditMode) return;
     if (!principal) return;
     if (Number.isNaN(Number(principal))) return;
-    setInterestPerWeek(String(calculateInterestFromPreset(Number(principal), profitPreset || undefined)));
-  }, [principal, profitPreset]);
+    setInterestPerInstallment(String(calculateInterestFromPreset(Number(principal), profitPreset || undefined)));
+  }, [isEditMode, principal, profitPreset]);
 
   const fileToDataUrl = (file) =>
     new Promise((resolve, reject) => {
@@ -94,7 +97,7 @@ export default function AddLoanForm({ onSave, onCancel, initialLoan = null, mode
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name || !principal || !interestPerWeek || !startDate) return;
+    if (!name || !principal || !interestPerInstallment || !startDate) return;
 
     // Final conversion to ensure strictly accurate Asia timezone string (YYYY-MM-DD) natively
     const tzDate = new Date(startDate.toLocaleString("en-US", {timeZone: "Asia/Dhaka"}));
@@ -107,7 +110,7 @@ export default function AddLoanForm({ onSave, onCancel, initialLoan = null, mode
       name,
       startDate: dbFormattedDate,
       principal: Number(principal),
-      interestPerWeek: Number(interestPerWeek),
+      interestPerInstallment: Number(interestPerInstallment),
       proofImage
     });
   };
@@ -184,13 +187,13 @@ export default function AddLoanForm({ onSave, onCancel, initialLoan = null, mode
           </div>
 
           <div className="form-group mb-8">
-            <label className="form-label">সপ্তাহে মুনাফার পরিমাণ (৳)</label>
+            <label className="form-label">প্রতি কিস্তিতে মুনাফা (৳)</label>
             <input 
               type="number" 
               className="form-input" 
               placeholder="যেমন: ২০০০"
-              value={interestPerWeek}
-              onChange={e => setInterestPerWeek(e.target.value)}
+              value={interestPerInstallment}
+              onChange={e => setInterestPerInstallment(e.target.value)}
               required
             />
             <span className="text-xs text-brand-primary" style={{ marginLeft: '0.25rem', marginTop: '0.25rem', opacity: 0.9 }}>
