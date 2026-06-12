@@ -4,20 +4,15 @@ Use this once to make all future APK/AAB updates install over previous versions 
 
 ## Current app capability snapshot
 
-The Android build currently includes:
+The Android build currently includes (see `.agents/AGENTS.md` for full domain rules):
 
-- Loan add/edit flow with optional document proof image
-- Camera or gallery image pick for document proof
-- Free-form crop UI (or skip crop) before save
-- Client-side image compression before persistence
-- Loan details modal with JPG download of proof image
-- Responsive Settings modal with:
-  - Backup export (`dena_YYYY-MM-DD_backup.json`)
-  - Restore import + in-app confirmation modal
-  - Configurable profit interval days (default 7)
-  - Notification test options panel
-- Profit interval change recalculates active loan due dates immediately
-- Dynamic footer year range in Bengali digits (`২০২৬`, `২০২৬–২০২৭`, ...)
+- **হিসাব রক্ষক** — Bengali loan/munafa tracker (`com.dena.app`, currently v3.8 / versionCode 28)
+- Fixed **কিস্তি** schedule from `startDate + n×interval` (Asia/Dhaka); munafa joma covers oldest unpaid slot
+- Loan add/edit with optional document proof (camera/gallery, crop, WebP compression)
+- Loan details + payment history; JPG proof save to `Documents/Dena/`
+- Responsive Settings: backup/restore, auto backup (WorkManager), munafa preset + interval, in-app APK update
+- Kisti reminder notifications via `getLoanDueState()`
+- Dynamic footer year range in Bengali digits
 
 ## Why this matters
 
