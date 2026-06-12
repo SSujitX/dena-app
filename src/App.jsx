@@ -1418,6 +1418,20 @@ export default function App() {
                 >
                   {isSettingsTestOpen ? 'ডিবাগ বন্ধ করুন' : 'ডিবাগ খুলুন'}
                 </button>
+                {isSettingsTestOpen && (
+                  <div className="settings-test-panel-wrap">
+                    <NotificationDebugPanel
+                      loans={loans}
+                      onRequestPermission={handleDebugPermissionCheck}
+                      onResync={handleDebugResync}
+                      onGetPending={handleDebugGetPending}
+                      onSendTest={handleDebugTest}
+                      onSendRealPreview={handleDebugRealPreview}
+                      onClearAll={handleDebugClearAll}
+                      onRecalculateSchedule={handleDebugRecalculateSchedule}
+                    />
+                  </div>
+                )}
               </div>
               </div>
             </div>
@@ -1434,20 +1448,6 @@ export default function App() {
               <p className="text-xs text-muted settings-status-text">{settingsStatus}</p>
             )}
 
-            {isSettingsTestOpen && (
-              <div className="settings-test-panel-wrap">
-                <NotificationDebugPanel
-                  loans={loans}
-                  onRequestPermission={handleDebugPermissionCheck}
-                  onResync={handleDebugResync}
-                  onGetPending={handleDebugGetPending}
-                  onSendTest={handleDebugTest}
-                  onSendRealPreview={handleDebugRealPreview}
-                  onClearAll={handleDebugClearAll}
-                  onRecalculateSchedule={handleDebugRecalculateSchedule}
-                />
-              </div>
-            )}
           </div>
         </div>
       )}
