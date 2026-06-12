@@ -1920,21 +1920,20 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .settings-actions-wrap {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem;
+  gap: 0.85rem;
   align-items: start;
 }
 
 .settings-interval-card {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
-  padding: clamp(0.78rem, 1.5vw, 1rem);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
   min-width: 0;
 }
 
 .settings-profit-card {
-  background: rgba(255, 255, 255, 0.035);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: transparent;
 }
 
 .settings-profit-row {
@@ -2013,38 +2012,94 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
 }
 
 .settings-card-block {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.022)),
+    rgba(10, 10, 14, 0.72);
+  padding: clamp(0.85rem, 1.5vw, 1.05rem);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.settings-card-block::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--section-accent, #8b5cf6), transparent 70%);
+  opacity: 0.9;
+}
+
+.settings-card-block > * {
+  position: relative;
+  z-index: 1;
 }
 
 .settings-card-block:first-child {
   grid-column: 1 / -1;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(168, 85, 247, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.022)),
+    rgba(10, 10, 14, 0.72);
 }
 
 .settings-card-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.45rem;
+  display: block;
+  min-height: auto;
+  padding: 0 0 0.72rem;
+  margin-bottom: 0.82rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background: transparent;
+  text-align: center;
 }
 
 .settings-block-title {
   margin: 0;
   color: var(--text-pure);
   font-size: 0.98rem;
-  line-height: 1.25;
-  text-align: left;
+  line-height: 1.2;
+  text-align: center;
+  width: 100%;
   letter-spacing: 0;
+  transform: none;
 }
 
 .settings-block-title::after {
   display: none;
+}
+
+.settings-card-block:nth-child(1) {
+  --section-accent: #a855f7;
+}
+
+.settings-card-block:nth-child(2) {
+  --section-accent: #60a5fa;
+}
+
+.settings-card-block:nth-child(3) {
+  --section-accent: #34d399;
+}
+
+.settings-card-block:nth-child(4) {
+  --section-accent: #f59e0b;
+}
+
+.settings-card-block:nth-child(5) {
+  --section-accent: #f472b6;
+}
+
+.settings-card-block:nth-child(6) {
+  --section-accent: #94a3b8;
+  grid-column: 1 / -1;
 }
 
 .settings-card-help {
@@ -2088,6 +2143,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   gap: 0.6rem;
   align-items: end;
   margin-top: 0.4rem;
+  margin-bottom: 0.72rem;
 }
 
 .settings-inline-field {
@@ -2095,6 +2151,10 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   flex-direction: column;
   gap: 0.38rem;
   min-width: 0;
+}
+
+.settings-auto-backup-custom + .settings-card-help {
+  margin-top: 0.15rem;
 }
 
 .settings-auto-backup-saved-note {
@@ -2112,7 +2172,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .settings-test-panel-wrap {
-  margin-top: 0.9rem;
+  margin-top: 0.85rem;
 }
 
 .settings-status-text {
@@ -2121,19 +2181,45 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .notification-debug-panel {
-  margin-top: 0.6rem;
-  padding: 1rem;
+  margin-top: 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: none;
+}
+
+.notification-debug-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  margin-bottom: 0.85rem;
+  padding: 0.46rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.notification-debug-summary strong {
+  color: var(--text-pure);
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
 .notification-debug-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
 }
 
 .notification-debug-btn {
   width: 100%;
-  min-height: 2.45rem;
+  min-height: 2.18rem;
+  border-radius: 8px;
+  padding: 0.5rem 0.62rem;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .restore-confirm-modal {
@@ -2369,6 +2455,10 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     gap: 0.8rem;
   }
 
+  .settings-card-block:first-child {
+    grid-column: auto;
+  }
+
   .settings-modal-header {
     margin-bottom: 0.85rem;
     padding-bottom: 0.72rem;
@@ -2443,12 +2533,12 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   }
 
   .settings-interval-card {
-    padding: 0.72rem;
-    border-radius: 8px;
+    padding: 0;
+    border-radius: 0;
   }
 
   .settings-profit-card {
-    border-radius: 8px;
+    border-radius: 0;
   }
 
   .settings-interval-input {
@@ -2462,7 +2552,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   }
 
   .settings-card-title-row {
-    margin-bottom: 0.38rem;
+    min-height: auto;
+    padding: 0 0 0.62rem;
+    margin-bottom: 0.72rem;
   }
 
   .settings-block-title {
