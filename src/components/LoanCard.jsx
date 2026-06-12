@@ -1,20 +1,38 @@
-import { calculateDaysLeft, getLastInterestPayment } from '../utils/loanManager';
+import {
+  calculateDaysLeft,
+  getInterestPaymentCoveredDate,
+  getLastInterestPayment,
+  getLoanInterestAmount,
+  getLoanDueState,
+} from '../utils/loanManager';
+
+const BUSINESS_TIMEZONE = 'Asia/Dhaka';
+
+const formatBnDate = (isoString) => {
+  const date = new Date(isoString);
+  const datePart = date.toLocaleDateString('bn-BD', { timeZone: BUSINESS_TIMEZONE });
+  const dayName = new Intl.DateTimeFormat('bn-BD', {
+    timeZone: BUSINESS_TIMEZONE,
+    weekday: 'long',
+  }).format(date);
+  return `${datePart} (${dayName})`;
+};
 
 export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDeleteClick, onOpenDetails }) {
-  const daysLeft = calculateDaysLeft(loan.nextPaymentDate);
+  const { nextPaymentDate, upcomingPaymentDate, missedCycles, missedDueDates } = getLoanDueState(loan);
+  const currentDueDate = missedDueDates[0] || nextPaymentDate;
+  const daysLeft = calculateDaysLeft(currentDueDate);
   const isOverdue = daysLeft < 0;
   const isActive = loan.status === 'ACTIVE';
 
   const toBn = (num) => Number(num).toLocaleString('bn-BD');
 
-  const banglaDays = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
-
-  const formatBnDate = (isoString) => {
-    const d = new Date(isoString);
-    return `${d.toLocaleDateString('bn-BD')} (${banglaDays[d.getDay()]})`;
-  };
-
   const lastInterestPayment = getLastInterestPayment(loan);
+  const lastInterestCoveredDate = lastInterestPayment
+    ? getInterestPaymentCoveredDate(loan, lastInterestPayment)
+    : '';
+  const unpaidDaysReferenceDate = lastInterestCoveredDate || currentDueDate;
+  const unpaidDaysSinceReference = Math.abs(calculateDaysLeft(unpaidDaysReferenceDate));
 
   const statusTileClass = !isActive
     ? 'loan-info-tile-done'
@@ -26,12 +44,19 @@ export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDelete
 
   const statusText = !isActive
     ? 'হিসাব সম্পূর্ণ পরিশোধিত'
-    : isOverdue
+    : missedCycles > 0 && isOverdue
       ? (
         <>
-          <span className="loan-info-em">{toBn(Math.abs(daysLeft))}</span> দিন হয়ে গেছে টাকা দেয়নি!
+          <span className="loan-info-em">{toBn(missedCycles)}</span> কিস্তি বাকি ·{' '}
+          শেষ সম্পন্ন কিস্তির পর <span className="loan-info-em">{toBn(unpaidDaysSinceReference)}</span> দিন জমা হয়নি
         </>
       )
+      : missedCycles > 0
+        ? (
+          <>
+            <span className="loan-info-em">{toBn(missedCycles)}</span> কিস্তি বাকি · আজকের কিস্তি বাকি
+          </>
+        )
       : daysLeft === 0
         ? 'আজকে টাকা দিবে'
         : (
@@ -59,7 +84,7 @@ export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDelete
           <div className="loan-card-amounts">
             <span className="loan-principal-amount">{toBn(loan.principal)} ৳</span>
             {isActive && (
-              <span className="loan-interest-amount">+{toBn(loan.interestPerWeek)} ৳</span>
+              <span className="loan-interest-amount">+{toBn(getLoanInterestAmount(loan))} ৳</span>
             )}
           </div>
         </div>
@@ -71,22 +96,52 @@ export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDelete
           </div>
 
           {lastInterestPayment && (
-            <div className="loan-info-tile loan-info-tile-joma loan-info-tile-split">
-              <div className="loan-info-tile-main">
+            <div className="loan-info-tile loan-info-tile-joma">
+              <div className="loan-joma-top">
                 <span className="loan-info-tile-label">শেষ মুনাফা জমা</span>
-                <span className="loan-info-tile-value">{formatBnDate(lastInterestPayment.date)}</span>
+                <span className="loan-joma-amount">{toBn(lastInterestPayment.amount)} ৳</span>
               </div>
-              <div className="loan-info-joma-amount-box">
-                <span className="loan-info-joma-amount">{toBn(lastInterestPayment.amount)} ৳</span>
-              </div>
+              <span className="loan-joma-paid-date">{formatBnDate(lastInterestPayment.date)}</span>
+              {lastInterestCoveredDate && (
+                <div className="loan-joma-done">
+                  <span className="loan-joma-done-mark" aria-hidden="true">✓</span>
+                  <div className="loan-joma-done-body">
+                    <span className="loan-joma-done-label">সম্পন্ন কিস্তি</span>
+                    <span className="loan-joma-done-date">{formatBnDate(lastInterestCoveredDate)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isActive && missedCycles > 0 && (
+            <div className="loan-info-tile loan-info-tile-missed">
+              <span className="loan-info-tile-label">
+                বাকি কিস্তি ({toBn(missedCycles)})
+              </span>
+              <ul className="loan-missed-dates-list">
+                {missedDueDates.map((dueDate, index) => (
+                  <li key={dueDate} className="loan-missed-date-item">
+                    <span className="loan-missed-date-index">{toBn(index + 1)}.</span>
+                    <span className="loan-missed-date-text">{formatBnDate(dueDate)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="loan-info-missed-hint">
+                <span>এখন জমা হবে:</span>
+                <strong>{formatBnDate(currentDueDate)}</strong>
+                <span>· প্রতি জমা = ১ কিস্তি</span>
+              </p>
             </div>
           )}
 
           {isActive && (
             <div className="loan-info-duo">
-              <div className={`loan-info-tile loan-info-tile-next ${isOverdue ? 'loan-info-tile-next-overdue' : ''}`}>
-                <span className="loan-info-tile-label">পরবর্তী কিস্তি</span>
-                <span className="loan-info-tile-value">{formatBnDate(loan.nextPaymentDate)}</span>
+              <div className="loan-info-tile loan-info-tile-next">
+                <span className="loan-info-tile-label">
+                  {missedCycles > 0 ? 'নতুন পরবর্তী কিস্তি' : 'পরবর্তী কিস্তি'}
+                </span>
+                <span className="loan-info-tile-value">{formatBnDate(upcomingPaymentDate)}</span>
               </div>
 
               <div className={`loan-info-tile loan-info-tile-status ${statusTileClass}`}>
@@ -116,7 +171,10 @@ export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDelete
                 onPaymentClick(loan);
               }}
             >
-              মুনাফা জমা
+              <span className="btn-line-label">
+                <span>মুনাফা</span>
+                <span>জমা</span>
+              </span>
             </button>
             <button
               type="button"
@@ -136,7 +194,10 @@ export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDelete
                 onDeleteClick();
               }}
             >
-              মুছে ফেলুন
+              <span className="btn-line-label">
+                <span>মুছে</span>
+                <span>ফেলুন</span>
+              </span>
             </button>
           </>
         ) : (
@@ -148,7 +209,10 @@ export default function LoanCard({ loan, onPaymentClick, onSettleClick, onDelete
               onDeleteClick();
             }}
           >
-            মুছে ফেলুন
+            <span className="btn-line-label">
+              <span>মুছে</span>
+              <span>ফেলুন</span>
+            </span>
           </button>
         )}
       </div>
