@@ -65,9 +65,9 @@ export default function NotificationDebugPanel({
 
   return (
     <div className="glass-card notification-debug-panel">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-base font-bold">ডিবাগ</h3>
-        <span className="text-xs text-muted">চলতি হিসাব: {loans.length}</span>
+      <div className="notification-debug-summary">
+        <span className="text-xs text-muted">চলতি হিসাব</span>
+        <strong>{loans.length.toLocaleString('bn-BD')}</strong>
       </div>
 
       <div className="mb-4">
