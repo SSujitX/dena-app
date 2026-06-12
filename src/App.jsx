@@ -134,10 +134,7 @@ const getDashboardFilters = () => {
 
   try {
     const parsed = JSON.parse(raw);
-    return {
-      ...filters,
-      activeTab: parsed?.activeTab === 'DONE' ? 'DONE' : 'ACTIVE',
-    };
+    return normalizeDashboardFilters(parsed);
   } catch {
     return filters;
   }
@@ -151,6 +148,7 @@ export default function App() {
     : copyrightStartYear.toLocaleString('bn-BD', { useGrouping: false });
 
   const [loans, setLoans] = useState(() => recalculateActiveLoansToFixedSchedule().loans);
+  const [calendarDay, setCalendarDay] = useState(() => new Date().toDateString());
   const [dashboardFilters, setDashboardFilters] = useState(() => getDashboardFilters());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSettingsTestOpen, setIsSettingsTestOpen] = useState(false);
@@ -195,7 +193,7 @@ export default function App() {
   const [updateDownloadErrorText, setUpdateDownloadErrorText] = useState('');
   const [isAddingLoan, setIsAddingLoan] = useState(false);
   const [editingLoanId, setEditingLoanId] = useState(null);
-  const [activePaymentModal, setActivePaymentModal] = useState({ show: false, loan: null, isSettle: false });
+  const [activePaymentModal, setActivePaymentModal] = useState({ show: false, loanId: null, isSettle: false });
   const [activeDeleteModal, setActiveDeleteModal] = useState({ show: false, loan: null });
   const [activeLoanDetailsId, setActiveLoanDetailsId] = useState(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -281,6 +279,36 @@ export default function App() {
   }, [loans, notificationsEnabled]);
 
   useEffect(() => {
+    const syncCalendarDay = () => {
+      const today = new Date().toDateString();
+      setCalendarDay((prev) => (prev === today ? prev : today));
+    };
+
+    syncCalendarDay();
+    const timer = window.setInterval(syncCalendarDay, 60_000);
+
+    const onVisible = () => {
+      if (!document.hidden) syncCalendarDay();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    let resumeListener;
+    const registerResume = async () => {
+      if (!Capacitor.isNativePlatform()) return;
+      resumeListener = await CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) syncCalendarDay();
+      });
+    };
+    registerResume();
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      resumeListener?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return undefined;
     const registerBackHandler = async () => {
       const listener = await CapacitorApp.addListener('backButton', ({ canGoBack }) => {
@@ -307,7 +335,7 @@ export default function App() {
         }
 
         if (isPaymentModalOpenRef.current) {
-          setActivePaymentModal({ show: false, loan: null, isSettle: false });
+          setActivePaymentModal({ show: false, loanId: null, isSettle: false });
           return;
         }
 
@@ -382,17 +410,17 @@ export default function App() {
   };
 
   const handlePaymentClick = (loan) => {
-    setActivePaymentModal({ show: true, loan, isSettle: false });
+    setActivePaymentModal({ show: true, loanId: loan.id, isSettle: false });
   };
 
   const handleSettleClick = (loan) => {
-    setActivePaymentModal({ show: true, loan, isSettle: true });
+    setActivePaymentModal({ show: true, loanId: loan.id, isSettle: true });
   };
 
   const handlePaymentConfirm = (loanId, amount, isFullSettlement, paymentDate = null) => {
     const updatedLoans = collectPayment(loanId, amount, isFullSettlement, paymentDate);
     setLoans(updatedLoans);
-    setActivePaymentModal({ show: false, loan: null, isSettle: false });
+    setActivePaymentModal({ show: false, loanId: null, isSettle: false });
   };
 
   const handleDeleteRequest = (loan) => {
@@ -411,11 +439,14 @@ export default function App() {
   const handleDashboardFiltersChange = useCallback((nextFilters) => {
     const normalized = normalizeDashboardFilters(nextFilters);
     setDashboardFilters(normalized);
-    localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify({ activeTab: normalized.activeTab }));
+    localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify(normalized));
   }, []);
 
   const activeLoanDetails = loans.find((loan) => loan.id === activeLoanDetailsId) || null;
   const editingLoan = loans.find((loan) => loan.id === editingLoanId) || null;
+  const activePaymentLoan = activePaymentModal.loanId
+    ? loans.find((loan) => loan.id === activePaymentModal.loanId) || null
+    : null;
 
   const handleDebugPermissionCheck = async () => {
     const allowed = await requestNotificationAccess();
@@ -869,14 +900,9 @@ export default function App() {
       setAutoBackupIntervalDraft(String(appliedAutoBackupConfig.intervalDays));
     }
     if (pendingRestoreDashboardFilters) {
-      const currentDate = new Date();
-      const normalizedFilters = {
-        activeTab: pendingRestoreDashboardFilters?.activeTab === 'DONE' ? 'DONE' : 'ACTIVE',
-        selectedYear: currentDate.getFullYear(),
-        selectedMonth: currentDate.getMonth(),
-      };
+      const normalizedFilters = normalizeDashboardFilters(pendingRestoreDashboardFilters);
       setDashboardFilters(normalizedFilters);
-      localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify({ activeTab: normalizedFilters.activeTab }));
+      localStorage.setItem(DASHBOARD_FILTERS_KEY, JSON.stringify(normalizedFilters));
     }
     if (pendingRestoreFirstRunSettingsShown !== null && pendingRestoreFirstRunSettingsShown !== undefined) {
       if (pendingRestoreFirstRunSettingsShown) {
@@ -896,7 +922,7 @@ export default function App() {
     setLoans(recalculateActiveLoansToFixedSchedule().loans);
     setActiveLoanDetailsId(null);
     setEditingLoanId(null);
-    setActivePaymentModal({ show: false, loan: null, isSettle: false });
+    setActivePaymentModal({ show: false, loanId: null, isSettle: false });
     setActiveDeleteModal({ show: false, loan: null });
     setPendingRestoreLoans(null);
     setPendingRestoreProfitIntervalDays(null);
@@ -1064,7 +1090,7 @@ export default function App() {
 
       <LiveClock />
 
-      <main style={{ flex: 1 }}>
+      <main style={{ flex: 1 }} data-calendar-day={calendarDay}>
         <Dashboard 
           loans={loans} 
           onPaymentClick={handlePaymentClick} 
@@ -1116,14 +1142,14 @@ export default function App() {
         </Suspense>
       )}
 
-      {activePaymentModal.show && (
+      {activePaymentModal.show && activePaymentLoan && (
         <PaymentModal 
-          key={`${activePaymentModal.loan.id}-${activePaymentModal.isSettle}`}
-          loan={activePaymentModal.loan}
+          key={`${activePaymentLoan.id}-${activePaymentModal.isSettle}`}
+          loan={activePaymentLoan}
           isSettle={activePaymentModal.isSettle}
           profitIntervalDays={getProfitIntervalDays()}
           onConfirm={handlePaymentConfirm}
-          onCancel={() => setActivePaymentModal({ show: false, loan: null, isSettle: false })}
+          onCancel={() => setActivePaymentModal({ show: false, loanId: null, isSettle: false })}
         />
       )}
 
@@ -1154,8 +1180,11 @@ export default function App() {
             className="modal-content settings-modal-content"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-6 flex justify-between items-center settings-modal-header">
-              <h2 className="text-2xl font-bold text-brand-gradient">সেটিংস</h2>
+            <div className="settings-modal-header">
+              <div>
+                <h2 className="settings-modal-title">সেটিংস</h2>
+                <p className="settings-modal-subtitle">মুনাফা, ব্যাকআপ ও অ্যাপ মেইনটেন্যান্স</p>
+              </div>
               <button
                 type="button"
                 className="loan-details-close-btn"
@@ -1168,13 +1197,10 @@ export default function App() {
 
             <div className="settings-actions-wrap">
               <div className="settings-card-block">
-                <div className="text-center mb-2">
+                <div className="settings-card-title-row">
                   <h3 className="section-title settings-block-title">অটো মুনাফা হিসাব</h3>
                 </div>
                 <div className="settings-interval-card settings-profit-card">
-                <p className="text-xs text-muted settings-interval-help">
-                  ১) আসল টাকা, ২) মুনাফা, ৩) মুনাফা নেওয়ার ব্যবধান (দিন) - এই ৩টি ঘর ধারাবাহিকভাবে পূরণ করুন।
-                </p>
                 <div className="settings-profit-row">
                   <div className="settings-profit-input-wrap">
                     <label className="text-xs text-muted">আসল টাকা (৳)</label>
@@ -1238,7 +1264,7 @@ export default function App() {
               </div>
 
               <div className="settings-card-block">
-                <div className="text-center mb-2">
+                <div className="settings-card-title-row">
                   <h3 className="section-title settings-block-title">অটো ব্যাকআপ</h3>
                 </div>
                 <div className="settings-interval-card settings-tools-card">
@@ -1261,14 +1287,17 @@ export default function App() {
                     : 'এখনও কোনো অটো ব্যাকআপ হয়নি।'}
                 </p>
                 <div className="settings-auto-backup-custom">
-                  <input
-                    type="number"
-                    min="1"
-                    max="365"
-                    className="form-input settings-interval-input"
-                    value={autoBackupIntervalDraft}
-                    onChange={(event) => setAutoBackupIntervalDraft(event.target.value.replace(/[^\d]/g, ''))}
-                  />
+                  <label className="settings-inline-field">
+                    <span className="text-xs text-muted">ব্যাকআপ ব্যবধান (দিন)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      className="form-input settings-interval-input"
+                      value={autoBackupIntervalDraft}
+                      onChange={(event) => setAutoBackupIntervalDraft(event.target.value.replace(/[^\d]/g, ''))}
+                    />
+                  </label>
                   <button
                     type="button"
                     className="btn btn-secondary settings-action-btn"
@@ -1287,7 +1316,7 @@ export default function App() {
               </div>
 
               <div className="settings-card-block">
-                <div className="text-center mb-2">
+                <div className="settings-card-title-row">
                   <h3 className="section-title settings-block-title">ম্যানুয়াল ব্যাকআপ</h3>
                 </div>
                 <div className="settings-interval-card settings-tools-card">
@@ -1312,7 +1341,7 @@ export default function App() {
               </div>
 
               <div className="settings-card-block">
-                <div className="text-center mb-2">
+                <div className="settings-card-title-row">
                   <h3 className="section-title settings-block-title">রিস্টোর</h3>
                 </div>
                 <div className="settings-interval-card settings-tools-card">
@@ -1341,7 +1370,7 @@ export default function App() {
               </div>
 
               <div className="settings-card-block">
-                <div className="text-center mb-2">
+                <div className="settings-card-title-row">
                   <h3 className="section-title settings-block-title">অ্যাপ আপডেট</h3>
                 </div>
                 <div className="settings-interval-card settings-tools-card">
@@ -1375,7 +1404,7 @@ export default function App() {
               </div>
 
               <div className="settings-card-block">
-                <div className="text-center mb-2">
+                <div className="settings-card-title-row">
                   <h3 className="section-title settings-block-title">ডিবাগ</h3>
                 </div>
                 <div className="settings-interval-card settings-tools-card">
