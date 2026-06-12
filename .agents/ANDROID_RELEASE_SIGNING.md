@@ -93,9 +93,13 @@ Release outputs:
 
 ## Versioning rule per release
 
-In `android/app/build.gradle`, always bump:
+Before push / CI release:
 
-- `versionCode` by +1 each release
-- `versionName` as semantic version (`1.1.1`, `1.2.0`, etc.)
+1. Add a `## vX.Y (...)` section to `CHANGELOG.md` (must match `versionName`).
+2. In `android/app/build.gradle`, bump:
+   - `versionCode` by +1 each release
+   - `versionName` as semantic version (`3.8`, `3.9`, etc.)
+
+GitHub Actions reads that changelog section into the release notes when creating a new tag.
 
 Do not change `applicationId` after public install.
