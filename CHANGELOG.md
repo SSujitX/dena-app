@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.9 (2026-06)
+
+### UI
+- Settings card titles (**অটো মুনাফা**, **অটো ব্যাকআপ**, etc.) centered above the divider line
+- **ডিবাগ** panel layout fixed — badge, হিসাব টুলস, help text spacing; full-width schedule button
+
+### Release
+- GitHub release notes auto-filled from `CHANGELOG.md` on new tag
+- `versionCode` 29 · `versionName` 3.9
+
 ## v3.8 (2026-06)
 
 ### হিসাব / Schedule
@@ -12,7 +22,6 @@
 - Wording updated to **কিস্তি** (বাকি কিস্তি, সম্পন্ন কিস্তি, প্রতি কিস্তির মুনাফা)
 - **Noto Sans Bengali** font; clearer loan card sections (start / joma / বাকি / পরবর্তী)
 - Settled loans hide **পরবর্তী কিস্তি** in details
-- Settings & debug panel titles aligned and spaced better
 
 ### Fixes
 - Notifications use live due state (`getLoanDueState`)
@@ -20,6 +29,3 @@
 - Edit loan no longer overwrites custom munafa amount
 - Legacy `interestPerWeek` → `interestPerInstallment` on load/save
 - Corrupt `localStorage` no longer crashes app on open
-
-### Android
-- `versionCode` 28 · `versionName` 3.8
