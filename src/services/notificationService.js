@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { getLoanDueState, getLoanInterestAmount } from '../utils/loanManager';
 
 const TIMEZONE = 'Asia/Dhaka';
 const CHANNEL_ID = 'loan-reminders';
@@ -57,7 +58,9 @@ const isAndroidNative = () => Capacitor.isNativePlatform() && Capacitor.getPlatf
 const buildLoanNotifications = (loan) => {
   if (loan.status !== 'ACTIVE') return [];
 
-  const dueYmd = normalizeLoanDueYmd(loan.nextPaymentDate);
+  const { nextPaymentDate } = getLoanDueState(loan);
+  const installmentInterestText = getLoanInterestAmount(loan).toLocaleString('bn-BD');
+  const dueYmd = normalizeLoanDueYmd(nextPaymentDate);
   const dayBeforeYmd = shiftDhakaYmdDays(dueYmd, -1);
   const dayBeforeAt4 = toDhakaDateAtHour(dayBeforeYmd, 16);
   const dueAt4 = toDhakaDateAtHour(dueYmd, 16);
@@ -71,7 +74,7 @@ const buildLoanNotifications = (loan) => {
     result.push({
       id: makeNotificationId(loan.id, 'day-before'),
       title: 'আগামীকাল কিস্তি',
-      body: `${loan.name} এর কিস্তি আগামীকাল। প্রাপ্য মুনাফা: ${Number(loan.interestPerWeek).toLocaleString('bn-BD')} টাকা।`,
+      body: `${loan.name} এর কিস্তি আগামীকাল। প্রাপ্য মুনাফা: ${installmentInterestText} টাকা।`,
       schedule: { at: dayBeforeAt4, allowWhileIdle: true },
       channelId: CHANNEL_ID,
       smallIcon: SMALL_ICON,
@@ -83,7 +86,7 @@ const buildLoanNotifications = (loan) => {
     result.push({
       id: makeNotificationId(loan.id, 'due-day'),
       title: 'আজ কিস্তি',
-      body: `${loan.name} আজ কিস্তি দেওয়ার কথা। প্রাপ্য মুনাফা: ${Number(loan.interestPerWeek).toLocaleString('bn-BD')} টাকা।`,
+      body: `${loan.name} আজ কিস্তি দেওয়ার কথা। প্রাপ্য মুনাফা: ${installmentInterestText} টাকা।`,
       schedule: { at: dueAt4, allowWhileIdle: true },
       channelId: CHANNEL_ID,
       smallIcon: SMALL_ICON,
@@ -216,14 +219,14 @@ export const scheduleRealMessagePreviewNotifications = async (loan) => {
 
   const now = Date.now();
   const customerName = loan?.name || 'রহিম মিয়া';
-  const weeklyInterest = Number(loan?.interestPerWeek || 2000).toLocaleString('bn-BD');
+  const installmentInterest = Number(getLoanInterestAmount(loan) || 2000).toLocaleString('bn-BD');
   const overdueCount = 1;
 
   const notifications = [
     {
       id: DEBUG_NAMESPACE_MIN + ((now + 10000) % 100000),
       title: 'আগামীকাল কিস্তি',
-      body: `${customerName} এর কিস্তি আগামীকাল। প্রাপ্য মুনাফা: ${weeklyInterest} টাকা।`,
+      body: `${customerName} এর কিস্তি আগামীকাল। প্রাপ্য মুনাফা: ${installmentInterest} টাকা।`,
       schedule: { at: new Date(now + 10000), allowWhileIdle: true },
       channelId: CHANNEL_ID,
       smallIcon: SMALL_ICON,
@@ -232,7 +235,7 @@ export const scheduleRealMessagePreviewNotifications = async (loan) => {
     {
       id: DEBUG_NAMESPACE_MIN + ((now + 20000) % 100000),
       title: 'আজ কিস্তি',
-      body: `${customerName} আজ কিস্তি দেওয়ার কথা। প্রাপ্য মুনাফা: ${weeklyInterest} টাকা।`,
+      body: `${customerName} আজ কিস্তি দেওয়ার কথা। প্রাপ্য মুনাফা: ${installmentInterest} টাকা।`,
       schedule: { at: new Date(now + 20000), allowWhileIdle: true },
       channelId: CHANNEL_ID,
       smallIcon: SMALL_ICON,
