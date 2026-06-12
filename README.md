@@ -98,8 +98,11 @@ Push দিলে:
 - signed APK build হয়
 - artifact upload হয়
 - `android/app/build.gradle` থেকে `versionName`/`versionCode` পড়ে
-- `versionName` থেকে tag/release হয় (যেমন: `v2.7`)
-- APK release asset হিসেবে attach হয় (যেমন: `Dena-v2.7.apk`)
+- `versionName` থেকে tag/release হয় (যেমন: `v3.8`)
+- APK release asset হিসেবে attach হয় (যেমন: `Dena-v3.8.apk`)
+- নতুন release তৈরি হলে `CHANGELOG.md` থেকে matching `## vX.Y` সেকশন GitHub release notes হিসেবে যায়
+
+Release করার আগে `CHANGELOG.md`-এ নতুন ভার্সন সেকশন লিখে `versionName`/`versionCode` বাড়ান।
 
 ## ব্যাকআপ সম্পর্কে
 
